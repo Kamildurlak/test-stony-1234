@@ -44,7 +44,16 @@ export const BrandIcons = ({ scrollRef }: BrandIconsProps): React.ReactElement =
      * również na 375 px, a wtedy stały promień 250 px wyrzuciłby dwie z nich
      * poza ekran.
      */
-    const radius = Math.min(ICONS.radiusPx, window.innerWidth * 0.34, window.innerHeight * 0.32);
+    /**
+     * Promień formacji. Górna granica z szerokości i wysokości okna, żeby
+     * ikony mieściły się w kadrze także na 375 px — ale wyraźnie szerzej niż
+     * blok treści, który stoi w środku pierścienia.
+     */
+    const radius = Math.min(
+      ICONS.orbitRadiusPx,
+      window.innerWidth * 0.42,
+      window.innerHeight * 0.46,
+    );
 
     for (let i = 0; i < LOGOS.length; i += 1) {
       const state = computeIconState(i, smooth, elapsedS, radius);
@@ -61,6 +70,16 @@ export const BrandIcons = ({ scrollRef }: BrandIconsProps): React.ReactElement =
          */
         tile.style.transform = `translate3d(${round(state.x)}px, ${round(state.y)}px, 0) scale(${round(state.scale, 4)})`;
         tile.style.opacity = `${state.opacity}`;
+        /**
+         * Kolejność rysowania wzdłuż elipsy.
+         *
+         * Ikona na dole toru jest bliżej widza i musi zasłaniać te z tyłu —
+         * bez tego elipsa czyta się jak płaska tarcza, a nie jak okrąg
+         * widziany pod kątem. Wartość z zakresu [-1,1] przeskalowana na
+         * niewielkie liczby całkowite; kontener ma `isolation: isolate`,
+         * więc te z-indeksy nie mogą wypchnąć ikon nad pudełko.
+         */
+        tile.style.zIndex = `${Math.round(state.depth * 10)}`;
       }
 
       /**
@@ -103,7 +122,18 @@ export const BrandIcons = ({ scrollRef }: BrandIconsProps): React.ReactElement =
   }, TICK_PRIORITY.RENDER);
 
   return (
-    <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+    <div
+      className="pointer-events-none absolute inset-0 flex items-center justify-center"
+      /**
+       * `isolation: isolate` tworzy własny kontekst układania.
+       *
+       * Bez tego z-indeksy poszczególnych ikon konkurowałyby bezpośrednio
+       * z pudełkiem i ikona z przodu elipsy potrafiłaby wskoczyć NAD karton —
+       * co zniszczyłoby zasłanianie w chwili wylotu, czyli najważniejszy
+       * efekt tej fazy. Izolacja zamyka je we własnej warstwie.
+       */
+      style={{ isolation: 'isolate' }}
+    >
       {LOGOS.map((logo, index) => (
         <div
           key={logo.id}

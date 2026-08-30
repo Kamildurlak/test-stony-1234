@@ -69,26 +69,38 @@ export const PHASES = {
   /** Zamach. Pudełko przykuca przed wybuchem. Bez tego otwarcie czyta się jak glitch. */
   ANTICIPATION: [0.0, 0.05],
 
-  /** Otwarcie klap. Najkrótsza i najgwałtowniejsza faza — to jest ten "wow". */
-  OPEN: [0.05, 0.11],
+  /**
+   * Otwarcie klap. DWA RAZY szybciej niż w pierwszej wersji (było 6% scrolla,
+   * jest 3%). Na życzenie klienta — i słusznie: wystrzał ma zaskakiwać,
+   * a rozciągnięty wystrzał przestaje być wystrzałem.
+   */
+  OPEN: [0.05, 0.08],
 
-  /** Wylot ikon z gardzieli pudełka. Najdłuższa faza ruchu. */
-  ICONS: [0.08, 0.3],
+  /** Wylot ikon: najpierw pionowo w górę, potem rozejście po okręgu. */
+  ICONS: [0.07, 0.22],
 
-  /** Upadek pudełka. Krótko i gwałtownie, z przyspieszeniem grawitacyjnym. */
-  FALL: [0.1, 0.2],
+  /**
+   * Upadek pudełka. Startuje DOKŁADNIE tam, gdzie ikony, i trwa trzy razy
+   * krócej niż wcześniej (było 10% scrolla, jest 3,5%).
+   *
+   * Uwaga na przyszłość: pierwotnie upadek startował 0.02 PO wylocie ikon,
+   * żeby widz zdążył zobaczyć przyczynę przed skutkiem. Klient poprosił
+   * o jednoczesność i tak zostało — ale to jest miejsce, do którego warto
+   * wrócić, jeśli wybuch zacznie się czytać jako chaotyczny.
+   */
+  FALL: [0.07, 0.105],
 
-  /** Scena 1: "Idealny montaż" — oś czasu montażu wideo. */
-  SCENE_EDIT: [0.3, 0.45],
+  /** Scena 1: "Idealny montaż" — wchodzi, gdy formacja rusza po okręgu. */
+  SCENE_EDIT: [0.2, 0.42],
 
   /** Scena 2: "Viralowe treści" — licznik wyświetleń + krzywa wzrostu. */
-  SCENE_VIRAL: [0.48, 0.63],
+  SCENE_VIRAL: [0.46, 0.66],
 
   /** Scena 3: "Strony, które konwertują" — dorzucona zgodnie z wymogiem min. 1 dodatkowej sceny. */
-  SCENE_WEB: [0.66, 0.81],
+  SCENE_WEB: [0.7, 0.86],
 
   /** Domknięcie: nagłówek marki, opis, CTA. */
-  OUTRO: [0.84, 1.0],
+  OUTRO: [0.9, 1.0],
 } as const satisfies Record<string, PhaseRange>;
 
 export type PhaseName = keyof typeof PHASES;
@@ -101,9 +113,9 @@ export type PhaseName = keyof typeof PHASES;
  * nowa wchodzi.
  */
 export const ROTATIONS = {
-  TO_VIRAL: [0.45, 0.48],
-  TO_WEB: [0.63, 0.66],
-  TO_OUTRO: [0.81, 0.84],
+  TO_VIRAL: [0.42, 0.46],
+  TO_WEB: [0.66, 0.7],
+  TO_OUTRO: [0.86, 0.9],
 } as const satisfies Record<string, PhaseRange>;
 
 /* ------------------------------------------------------------------------- */
@@ -240,53 +252,64 @@ export const ICONS = {
    * Opóźnienia startu jako ułamek fazy ICONS. Kolejność zgodna z LOGOS:
    * TikTok, Instagram, YouTube, Facebook.
    *
-   * Znów: wartości celowo nierówne i nie w kolejności indeksów. Ikony mają
-   * wysypać się z pudełka, a nie wyjechać z niego w kolejce.
+   * Ciaśniej niż wcześniej, bo cała czwórka ma wystrzelić jak jeden ładunek —
+   * ale nadal nierówno, żeby nie czytało się to jak jedna klatka kluczowa.
    */
-  delays: [0.0, 0.11, 0.05, 0.17],
+  delays: [0.0, 0.07, 0.03, 0.11],
 
-  /** Ułamek fazy na przelot jednej ikony — z zapasem na przestrzelenie. */
-  duration: 0.66,
+  /** Ułamek fazy na przelot jednej ikony. */
+  duration: 0.74,
 
   /**
-   * Pozycje docelowe w formacji, jako ułamek promienia bazowego.
-   * Cztery narożniki, bo w środku ląduje treść scen 5–8.
+   * Ułamek lotu zajmowany przez WYSTRZAŁ PIONOWY.
+   *
+   * Klient poprosił wprost: ikony mają najpierw lecieć prosto w górę,
+   * a dopiero potem rozejść się po okręgu. Ten podział jest sednem ruchu —
+   * pionowy start czyta się jak wyrzucenie z pudełka, a rozejście po łuku
+   * jak przejęcie ich przez formację. Dwie różne przyczyny, więc dwie
+   * różne fazy.
    */
-  targets: [
-    [-0.92, -0.62],
-    [0.92, -0.62],
-    [-0.92, 0.62],
-    [0.92, 0.62],
-  ] as const,
+  launchRatio: 0.4,
 
-  /** Promień formacji w px (przed skalowaniem responsywnym). */
-  radiusPx: 250,
+  /**
+   * Formacja to ELIPSA, nie okrąg.
+   *
+   * Spłaszczenie w pionie czyta się jako okrąg oglądany pod kątem, więc
+   * ikony krążące po nim zdają się raz przybliżać, raz oddalać. Idealny
+   * okrąg wyglądałby jak płaska tarcza — a chcemy przestrzeni.
+   */
+  orbitRadiusPx: 300,
+  orbitFlatten: 0.66,
+
+  /**
+   * Kąty docelowe na elipsie, w stopniach, liczone od GÓRY zgodnie z ruchem
+   * wskazówek zegara. Wszystkie ikony wystrzeliwują do punktu 0 (szczyt)
+   * i dopiero stamtąd rozjeżdżają się na swoje miejsca — jak na taśmie.
+   */
+  slotAngles: [0, 90, 180, 270],
 
   /** Skala startowa w gardzieli pudełka. Mała = wrażenie głębi. */
   startScale: 0.2,
 
   /**
-   * Wysokość łuku lotu jako wielokrotność promienia formacji.
-   * Brief: "najpierw w górę, potem rozejście na boki — nie po linii prostej".
+   * Głębia na elipsie: ikona na dole jest BLIŻEJ widza, więc większa,
+   * i musi zasłaniać te z tyłu. Bez tego elipsa spłaszcza się z powrotem
+   * do tarczy.
    */
-  arcHeight: 1.35,
+  depthScale: 0.16,
 
-  /** Obrót w locie, stopnie. Każda ikona inny — i w różne strony. */
-  spinDeg: [420, -300, 340, -480],
+  /** Obrót własny w locie, stopnie. Każda ikona inna i w inną stronę. */
+  spinDeg: [300, -240, 260, -340],
 
   /**
-   * Ruch własny po osadzeniu. Okresy dobrane tak, żeby nie miały wspólnej
-   * wielokrotności — cztery ikony nigdy nie wracają do tej samej konfiguracji.
+   * Okres pełnego obiegu formacji po osadzeniu. Powolny — to ma być tło
+   * dla treści w środku, nie karuzela odciągająca uwagę.
    */
+  orbitPeriodS: 34,
+
+  /** Amplituda wahadła kafelka wokół osi pionowej. NIE pełny obrót. */
+  idleSwingDeg: 14,
   idleSpinPeriodS: [11.3, 14.7, 9.1, 17.2],
-
-  /**
-   * Amplituda wahadła wokół osi pionowej, w stopniach.
-   * NIE pełny obrót — uzasadnienie w lib/iconPhysics.ts.
-   */
-  idleSwingDeg: 16,
-  idleBobPeriodS: [3.1, 4.3, 2.6, 3.7],
-  idleBobPx: 9,
 } as const;
 
 /**

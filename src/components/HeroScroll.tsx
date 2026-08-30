@@ -5,6 +5,7 @@ import { useScrollProgress } from '../hooks/useScrollProgress';
 import { AccessibleHeroContent } from './AccessibleHeroContent';
 import { BrandIcons } from './icons/BrandIcons';
 import { CssBox } from './box/CssBox';
+import { SceneEdit } from './scenes/SceneEdit';
 import { DevProgress } from './DevProgress';
 import { SceneScaffold } from './SceneScaffold';
 
@@ -60,6 +61,10 @@ export const HeroScroll = (): React.ReactElement => {
           */}
           <BrandIcons scrollRef={scrollRef} />
           <CssBox scrollRef={scrollRef} />
+
+          {/* Sceny treści lądują w ŚRODKU formacji ikon, więc rysują się
+              po pudełku i po ikonach. */}
+          <SceneEdit scrollRef={scrollRef} />
 
           <SceneScaffold scrollRef={scrollRef} />
 
