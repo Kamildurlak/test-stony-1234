@@ -123,50 +123,56 @@ export const ROTATIONS = {
 /* ------------------------------------------------------------------------- */
 
 /**
- * Podskok pudełka. To jest napędzane CZASEM, nie scrollem — dlatego stoi
- * osobno od PHASES. Kluczowe rozróżnienie: scroll steruje narracją,
- * czas steruje życiem sceny ("nic nie jest nieruchome").
+ * Ruch własny pudełka w spoczynku.
+ *
+ * ZMIANA KIERUNKU. Pierwotny brief żądał wyraźnego PODSKOKU z fizyką:
+ * tor paraboliczny, zgniecenie przy lądowaniu do 82% wysokości, rozciągnięcie
+ * w locie, cień reagujący na wysokość. To wszystko zostało zbudowane
+ * i działało.
+ *
+ * Klient poprosił jednak o ruch „bardzo subtelny", bez agresywnych odbić —
+ * poziom premium motion design zamiast animacji przedmiotu z reklamy.
+ * To jest dokładna odwrotność tamtego wymogu, więc fizyka skoku znika,
+ * a zostaje delikatne unoszenie.
+ *
+ * Co świadomie tracimy: squash and stretch, czyli najmocniejszy sygnał masy,
+ * jakim dysponowaliśmy. Ciężar musi teraz nieść samo światło, cień kontaktowy
+ * i proporcje bryły.
+ *
+ * Ruch jest napędzany CZASEM, nie scrollem — scroll steruje narracją,
+ * czas steruje życiem sceny.
  */
-export const BOUNCE = {
-  /** Pełny cykl skoku w sekundach. 0.75 s = żwawo, ale bez nerwowości. */
-  periodS: 0.75,
-
-  /** Wysokość skoku w jednostkach sceny. */
-  height: 0.42,
+export const FLOAT = {
+  /** Okres unoszenia. Długi: przedmiot ma oddychać, a nie kołysać się. */
+  periodS: 5.6,
 
   /**
-   * Faza lotu jako ułamek cyklu. Reszta (1 - flightRatio) to kontakt z podłożem.
-   * Krótki kontakt = wrażenie sprężystości; długi = wrażenie ciężaru.
-   * 0.86 daje przedmiot lekki, ale nie gumowy.
+   * Amplituda w jednostkach wysokości pudełka. CELOWO bardzo mała —
+   * powyżej kilku procent zaczyna się „lewitujący przedmiot", przed którym
+   * klient ostrzega wprost.
    */
-  flightRatio: 0.86,
+  amplitude: 0.035,
 
-  /** Zgniecenie przy lądowaniu: wysokość spada do 82%, szerokość rośnie o 15%. */
-  squashY: 0.82,
-  squashX: 1.15,
-
-  /** Rozciągnięcie w locie — odwrotność zgniecenia, ale słabsza (ruch w górę jest subtelniejszy). */
-  stretchY: 1.08,
-  stretchX: 0.95,
+  /**
+   * Mikroskalowanie towarzyszące unoszeniu: gdy bryła jest wyżej, jest
+   * odrobinę bliżej widza. Wartość na granicy dostrzegalności — ma działać
+   * podprogowo, nie być widocznym efektem.
+   */
+  breathScale: 0.008,
 
   /**
    * Mikroobrót wokół osi pionowej. Okres CELOWO niewspółmierny z periodS
-   * (0.75 vs 5.3 — stosunek niewymierny w praktyce), żeby pętla nie była
-   * "słyszalna". Gdyby oba okresy się dzieliły, oko wyłapałoby powtórzenie
-   * po kilku sekundach.
+   * (5.6 vs 13.7), żeby układ nigdy nie wrócił do tej samej konfiguracji —
+   * wspólna wielokrotność oznaczałaby widoczną pętlę.
    */
-  yawPeriodS: 5.3,
-  yawAmplitudeDeg: 7,
+  yawPeriodS: 13.7,
+  yawAmplitudeDeg: 4.5,
 
-  /**
-   * Stały skos bryły — żeby pudełko czytało się jako obiekt 3D, a nie prostokąt.
-   *
-   * Skos w osi X podniesiony z -8° do -14°: przy płytszym kącie górna
-   * płaszczyzna była praktycznie niewidoczna, a to na niej siedzą detale
-   * decydujące o wiarygodności materiału — taśma, szew i cięte krawędzie klap.
-   * Zbudowanie ich i pokazanie pod kątem, pod którym ich nie widać, byłoby
-   * pracą wyrzuconą.
-   */
+  /** Delikatne kołysanie w osi X, jeszcze wolniejsze. */
+  pitchPeriodS: 19.3,
+  pitchAmplitudeDeg: 2.2,
+
+  /** Stały skos bryły — żeby czytała się jako obiekt 3D, a nie prostokąt. */
   restTiltXDeg: -14,
   restTiltYDeg: 14,
 } as const;
@@ -385,8 +391,8 @@ export const SHADOW = {
   scaleApex: 0.62,
 
   /** Krycie cienia przy podłożu i na szczycie. */
-  opacityGround: 0.55,
-  opacityApex: 0.16,
+  opacityGround: 0.8,
+  opacityApex: 0.42,
 
   /** Rozmycie w px przy podłożu i na szczycie. */
   blurGroundPx: 18,
@@ -410,7 +416,7 @@ export const SHADOW = {
 export const CONTACT_SHADOW = {
   /** Szerokość względem cienia miękkiego — wyraźnie węższy. */
   widthRatio: 1.02,
-  opacityGround: 0.62,
+  opacityGround: 0.85,
   blurGroundPx: 5,
   blurApexPx: 16,
   /**
@@ -440,17 +446,31 @@ export const CONTACT_SHADOW = {
  * z plików SVG. Paleta studia = UI, kolory marek = tożsamość ikon.
  */
 export const PALETTE = {
-  /** Baza: ciepła biel z nutą lawendy. Czysta biel byłaby surowa i męcząca. */
-  bg: '#F7F5FB',
+  /**
+   * Baza: chłodna, bardzo jasna biel z nutą błękitu i fioletu.
+   *
+   * ŚWIADOMIE NIE #FFFFFF. Czysta biel na dużej powierzchni jest martwa —
+   * nie ma w niej żadnej informacji o świetle, więc wszystko, co na niej
+   * stoi, wygląda jak wklejone. Odcień chłodny, bo cała scena jest
+   * oświetlona zimnymi gradientami z tła; ciepła baza kłóciłaby się z nimi.
+   */
+  bg: '#F1F3F9',
+  /** Drugi punkt bazy — tło jest delikatnym gradientem, nie płaską plamą. */
+  bgDeep: '#E7EAF4',
 
-  /** Akcenty — te same barwy co wcześniej, przeniesione na jasne tło. */
+  /* Akcenty. Wszystkie występują w tle wyłącznie jako ŹRÓDŁA ŚWIATŁA
+     o niskim kryciu, nigdy jako płaskie plamy koloru. */
+  blue: '#2E7BFF',
+  cyan: '#22D3EE',
+  violet: '#8B5CF6',
   magenta: '#F0246E',
-  cyan: '#00B5A3',
-  violet: '#7C4DEE',
+  pink: '#FF6BA8',
+  /** Bursztyn tylko jako pojedynczy, ciepły akcent równoważący zimne światła. */
+  amber: '#FF9A5A',
 
-  /** Tekst. Nie czarny — czysta czerń na jasnym tle daje nieprzyjemny kontrast. */
-  ink: '#14101F',
-  inkMuted: '#5B5470',
+  /** Tekst. Nie czerń — granatowy grafit, spójny z chłodną bazą. */
+  ink: '#141A2E',
+  inkMuted: '#5A6280',
 } as const;
 
 /**
@@ -465,19 +485,43 @@ export const PALETTE = {
  * a nie jak nadruk. Jeśli okaże się za spokojne, podbijamy `opacity`.
  */
 export const BACKDROP = {
-  blobs: [
-    { color: '#FF3D81', x: 18, y: 22, size: 58, opacity: 0.4 },
-    { color: '#00E5D0', x: 82, y: 30, size: 52, opacity: 0.34 },
-    { color: '#8B5CF6', x: 62, y: 78, size: 62, opacity: 0.38 },
-    { color: '#FFB020', x: 30, y: 82, size: 46, opacity: 0.26 },
-  ],
   /**
-   * Bardzo powolny dryf plam. Brief: "Nic nie jest nieruchome."
-   * Okres liczony w dziesiątkach sekund — ruch ma być poniżej progu
-   * świadomej uwagi. Zauważalny dryf tła odciągałby wzrok od pudełka.
+   * Źródła światła w tle.
+   *
+   * To NIE są „kolorowe plamy" — to są światła. Różnica jest w kryciu
+   * i w rozmiarze: plama ma ostry zasięg i rzuca się w oczy, światło jest
+   * duże, miękkie i pozostaje poniżej progu świadomej uwagi, dopóki się
+   * na nie nie spojrzy. Dlatego wszystkie mają krycie w okolicach 0.2–0.4
+   * i średnicę liczoną w dziesiątkach procent ekranu.
+   *
+   * Rozmieszczenie: świadomie WOKÓŁ środka kadru. Środek zostaje jaśniejszy
+   * i spokojniejszy, bo tam stoi pudełko i treść — hierarchia z brief'u
+   * mówi wprost, że tło nie może konkurować z produktem.
+   *
+   * `driftS` i `pulseS` są parami niewspółmierne, żeby układ świateł nigdy
+   * nie wrócił do tej samej konfiguracji. Wspólna wielokrotność okresów
+   * oznaczałaby widoczną pętlę.
    */
-  driftPeriodS: 46,
-  driftAmplitudePct: 4,
+  lights: [
+    { color: '#2E7BFF', x: 12, y: 18, size: 62, opacity: 0.42, driftS: 41, pulseS: 23, dx: 7, dy: -5 },
+    { color: '#22D3EE', x: 86, y: 26, size: 54, opacity: 0.38, driftS: 53, pulseS: 29, dx: -6, dy: 6 },
+    { color: '#8B5CF6', x: 74, y: 82, size: 66, opacity: 0.4, driftS: 47, pulseS: 34, dx: -8, dy: -4 },
+    { color: '#F0246E', x: 20, y: 78, size: 50, opacity: 0.3, driftS: 59, pulseS: 26, dx: 6, dy: 5 },
+    { color: '#FF6BA8', x: 52, y: 6, size: 44, opacity: 0.24, driftS: 67, pulseS: 31, dx: -5, dy: 7 },
+    { color: '#FF9A5A', x: 6, y: 54, size: 38, opacity: 0.2, driftS: 73, pulseS: 37, dx: 8, dy: 3 },
+  ],
+
+  /**
+   * Świetlne fale: bardzo szerokie, ledwie widoczne pasma przepływające
+   * w poprzek kadru. Dokładają trzeci wymiar ruchu — same światła dryfują
+   * lokalnie, a fale przechodzą przez całą scenę, więc tło nigdy nie wygląda
+   * na zapętlone w jednym miejscu.
+   */
+  waves: [
+    { angle: -18, y: 30, thickness: 26, opacity: 0.1, durationS: 44, color: '#2E7BFF' },
+    { angle: 12, y: 62, thickness: 34, opacity: 0.085, durationS: 61, color: '#8B5CF6' },
+    { angle: -8, y: 88, thickness: 22, opacity: 0.07, durationS: 78, color: '#22D3EE' },
+  ],
 } as const;
 
 /**
@@ -504,11 +548,48 @@ export const GLOW = {
  * tyle że teraz może być sobą.
  */
 export const CARDBOARD = {
-  base: '#C89A6B',
-  light: '#E0BC92',
-  dark: '#9A7048',
+  /**
+   * Materiał: czysta, matowa tektura premium.
+   *
+   * ZMIANA NA PROŚBĘ KLIENTA. Wcześniej powierzchnia miała włókno papieru
+   * i wielkoskalowe przybrudzenie — to one zamieniały płaską bryłę w karton.
+   * Klient poprosił o powierzchnię idealnie czystą, bez ziarna i szumu.
+   *
+   * Realizm musi więc przyjść skądinąd: z FAZOWANIA krawędzi, z gradientów
+   * opisujących kierunek światła i z kolorowego światła konturowego
+   * odbitego od tła. To jest realizm opakowania z fotografii produktowej,
+   * a nie paczki kurierskiej — inny, ale nie mniejszy.
+   */
+  base: '#D8B892',
+  light: '#F0DCC2',
+  dark: '#A8825C',
   /** Wnętrze — nadal wyraźnie ciemne, żeby ikony miały Z CZEGO się wyłonić. */
   interior: '#3A2716',
+
+  /**
+   * Fazowanie: jasna nitka na krawędzi zwróconej do światła i ciemna
+   * na przeciwnej. To ona zastępuje usunięte ziarno — bez niej ściany
+   * schodzą się nieskończenie ostrą linią, czego w rzeczywistości nie ma
+   * żaden przedmiot.
+   */
+  bevelLight: 'rgba(255,248,236,0.85)',
+  bevelDark: 'rgba(120,88,54,0.5)',
+} as const;
+
+/**
+ * Światło konturowe odbite od kolorowych gradientów w tle.
+ *
+ * Fizyczna motywacja: pudełko stoi w scenie oświetlonej zimnymi plamami
+ * światła, więc jego krawędzie MUSZĄ łapać ich barwę. Bez tego bryła
+ * wygląda, jakby została wycięta z innego zdjęcia i wklejona na tło.
+ *
+ * Krycie celowo niskie — to ma podkreślać kształt, a nie malować pudełko
+ * na niebiesko.
+ */
+export const RIM_LIGHT = {
+  cool: 'rgba(46,123,255,0.34)',
+  violet: 'rgba(139,92,246,0.26)',
+  warm: 'rgba(255,154,90,0.2)',
 } as const;
 
 /* ------------------------------------------------------------------------- */

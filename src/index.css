@@ -16,18 +16,20 @@
  * z JS w runtime, co kosztowałoby FOUC przy pierwszym renderze.
  */
 @theme {
-  --color-bg: #f7f5fb;
+  --color-bg: #f1f3f9;
+  --color-bg-deep: #e7eaf4;
+  --color-blue: #2e7bff;
   --color-magenta: #f0246e;
-  --color-cyan: #00b5a3;
-  --color-violet: #7c4dee;
-  --color-ink: #14101f;
-  --color-ink-muted: #5b5470;
+  --color-cyan: #22d3ee;
+  --color-violet: #8b5cf6;
+  --color-ink: #141a2e;
+  --color-ink-muted: #5a6280;
 
   /* Kraft — jaśniejszy i cieplejszy niż w wersji na ciemnym tle.
      Uzasadnienie w config/scene.ts → CARDBOARD. */
-  --color-kraft: #c89a6b;
-  --color-kraft-light: #e0bc92;
-  --color-kraft-dark: #9a7048;
+  --color-kraft: #d8b892;
+  --color-kraft-light: #f0dcc2;
+  --color-kraft-dark: #a8825c;
   --color-kraft-interior: #3a2716;
 
   --font-display: 'Cabinet Grotesk', 'Inter Variable', system-ui, sans-serif;

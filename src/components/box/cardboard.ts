@@ -15,27 +15,6 @@ import { CARDBOARD } from '../../config/scene';
  * i widocznej grubości na cięciu.
  */
 
-/**
- * Włókno papieru.
- *
- * `baseFrequency` ma DWIE wartości (X i Y), i to jest tu najważniejszy detal:
- * szum anizotropowy, wyraźnie rozciągnięty w poziomie. Papier powstaje na
- * sicie, na którym włókna układają się wzdłuż kierunku produkcji — dlatego
- * ma widoczny "słój". Szum izotropowy dałby piasek, a nie papier.
- *
- * Filtr jest zamknięty w dokumencie data URI, więc jego identyfikator nie
- * może kolidować z niczym na stronie.
- */
-const FIBER = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='f'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.95 0.28' numOctaves='4' seed='11'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='220' height='220' filter='url(%23f)' opacity='0.85'/%3E%3C/svg%3E")`;
-
-/**
- * Wielkoskalowe przybrudzenie — nierównomierność koloru na przestrzeni całej
- * ściany. Karton nigdy nie jest jednolity: recyklat daje plamy, transport
- * dokłada przetarcia. Bez tego nawet ładnie oteksturowana ściana wygląda
- * jak próbka materiału, a nie jak używany przedmiot.
- */
-const MOTTLE = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='400'%3E%3Cfilter id='m'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.012' numOctaves='3' seed='5'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3CfeComponentTransfer%3E%3CfeFuncR type='linear' slope='0.45' intercept='0.55'/%3E%3CfeFuncG type='linear' slope='0.45' intercept='0.55'/%3E%3CfeFuncB type='linear' slope='0.45' intercept='0.55'/%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width='400' height='400' filter='url(%23m)' opacity='0.6'/%3E%3C/svg%3E")`;
-
 interface SurfaceOptions {
   /** Gradient bazowy opisujący oświetlenie tej konkretnej ściany. */
   readonly gradient: string;
@@ -54,15 +33,18 @@ export const cardboardSurface = ({
   occlusion,
   edgeLight,
 }: SurfaceOptions): CSSProperties => ({
-  backgroundImage: `${FIBER}, ${MOTTLE}, ${gradient}`,
-  backgroundSize: '220px 220px, 400px 400px, 100% 100%',
+  backgroundImage: gradient,
   /**
-   * `soft-light` dla włókna zamiast `multiply`: mnożenie tylko przyciemnia,
-   * więc faktura wychodzi brudna i jednostronna. Miękkie światło działa
-   * w obie strony — jedne włókna łapią światło, inne są w cieniu, tak jak
-   * na prawdziwej powierzchni.
+   * ŻADNEGO ziarna ani szumu — na wyraźną prośbę klienta.
+   *
+   * Wcześniej powierzchnia miała anizotropowe włókno papieru i wielkoskalowe
+   * przybrudzenie; to one zamieniały płaską bryłę w karton. Teraz realizm
+   * musi wziąć się wyłącznie z gradientu opisującego kierunek światła,
+   * z okluzji przy krawędziach i z fazowania.
+   *
+   * To jest realizm z fotografii produktowej, nie z magazynu: powierzchnia
+   * ma być bez skazy, a bryłę mają budować światło i geometria.
    */
-  backgroundBlendMode: 'soft-light, multiply, normal',
   boxShadow: [occlusion, edgeLight].filter(Boolean).join(', ') || undefined,
 });
 
@@ -129,15 +111,16 @@ const tapeHalf = (torn: 'top' | 'bottom'): string => {
 
   const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'>
 <defs><linearGradient id='t' x1='0' y1='0' x2='1' y2='0.18'>
-<stop offset='0' stop-color='#D6B68A' stop-opacity='.55'/>
-<stop offset='.14' stop-color='#FFF6E2' stop-opacity='.82'/>
-<stop offset='.30' stop-color='#ECD6B2' stop-opacity='.40'/>
-<stop offset='.62' stop-color='#CEB086' stop-opacity='.34'/>
-<stop offset='.88' stop-color='#FFF8E8' stop-opacity='.62'/>
-<stop offset='1' stop-color='#C6A87E' stop-opacity='.50'/>
+<stop offset='0' stop-color='#E8DCC8' stop-opacity='.42'/>
+<stop offset='.11' stop-color='#FFFFFF' stop-opacity='.88'/>
+<stop offset='.22' stop-color='#F4EEE2' stop-opacity='.34'/>
+<stop offset='.58' stop-color='#E2D6C4' stop-opacity='.26'/>
+<stop offset='.83' stop-color='#FFFFFF' stop-opacity='.7'/>
+<stop offset='.93' stop-color='#EDE4D6' stop-opacity='.3'/>
+<stop offset='1' stop-color='#DCCFBB' stop-opacity='.4'/>
 </linearGradient></defs>
 <path d='${shape}' fill='url(%23t)'/>
-<path d='${shape}' fill='none' stroke='%23FFFFFF' stroke-opacity='.7' stroke-width='1.4'/>
+<path d='${shape}' fill='none' stroke='%23FFFFFF' stroke-opacity='.55' stroke-width='1'/>
 </svg>`;
 
   return `url("data:image/svg+xml,${svg.replace(/\n/g, '').replace(/#/g, '%23').replace(/"/g, "'")}")`;

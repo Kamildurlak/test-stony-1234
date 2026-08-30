@@ -1,11 +1,11 @@
 import { useRef, type CSSProperties, type RefObject } from 'react';
-import { BOUNCE, BOX, CARDBOARD, CONTACT_SHADOW, FLAPS, TAPE_BREAK } from '../../config/scene';
+import { BOX, CARDBOARD, CONTACT_SHADOW, FLAPS, FLOAT, RIM_LIGHT, TAPE_BREAK } from '../../config/scene';
 import { computeBoxState } from '../../lib/boxPhysics';
 import { round } from '../../lib/math';
 import { TICK_PRIORITY } from '../../lib/ticker';
 import { useTicker } from '../../hooks/useTicker';
 import type { ScrollState } from '../../hooks/useScrollProgress';
-import { cardboardSurface, CORRUGATION, TAPE_BOTTOM_HALF, TAPE_TOP_HALF } from './cardboard';
+import { cardboardSurface, CORRUGATION, TAPE, TAPE_BOTTOM_HALF, TAPE_TOP_HALF } from './cardboard';
 
 /**
  * Pudełko zbudowane w CSS 3D.
@@ -22,6 +22,9 @@ const HALF_D = BOX.depthPx / 2;
 
 /** Udawana grubość tektury. Widoczna na cięciach klap. */
 const BOARD_THICKNESS_PX = 3.5;
+
+/** Jak daleko taśma schodzi po ścianie za krawędzią. */
+const TAPE_FOLD_PX = 22;
 
 /**
  * Poziom podłoża, liczony od GÓRNEJ krawędzi kontenera.
@@ -40,7 +43,7 @@ const BOARD_THICKNESS_PX = 3.5;
  * żeby zmiana skosu albo proporcji bryły nie wymagała ponownego dobierania
  * wartości ręcznie.
  */
-const TILT_RAD = (Math.abs(BOUNCE.restTiltXDeg) * Math.PI) / 180;
+const TILT_RAD = (Math.abs(FLOAT.restTiltXDeg) * Math.PI) / 180;
 const PROJECTED_BOTTOM =
   (HALF_H * Math.cos(TILT_RAD) + HALF_D * Math.sin(TILT_RAD)) *
   (BOX.perspectivePx / (BOX.perspectivePx - HALF_D * Math.cos(TILT_RAD)));
@@ -83,6 +86,7 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
   const contactShadowRef = useRef<HTMLDivElement>(null);
   const flapRefs = useRef<Array<HTMLDivElement | null>>([]);
   const tapeRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const tapeFoldRefs = useRef<Array<HTMLDivElement | null>>([]);
 
   useTicker((_deltaS, elapsedS) => {
     const { smooth } = scrollRef.current;
@@ -105,8 +109,8 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
       boxRef.current.style.transform = [
         `translate3d(0, ${round(totalY)}px, 0)`,
         `rotateZ(${round(state.fallRollDeg, 2)}deg)`,
-        `rotateX(${round(BOUNCE.restTiltXDeg + state.fallTumbleDeg, 2)}deg)`,
-        `rotateY(${round(BOUNCE.restTiltYDeg + state.yawDeg)}deg)`,
+        `rotateX(${round(FLOAT.restTiltXDeg + state.fallTumbleDeg, 2)}deg)`,
+        `rotateY(${round(FLOAT.restTiltYDeg + state.yawDeg)}deg)`,
         `scale3d(${round(state.scaleX, 4)}, ${round(state.scaleY, 4)}, ${round(state.scaleX, 4)})`,
       ].join(' ');
       boxRef.current.style.opacity = `${round(state.opacity, 3)}`;
@@ -135,6 +139,14 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
       const curl = state.tapeBreak * TAPE_BREAK.curlDeg * direction;
       node.style.transform = `translate3d(0, ${round(offset)}px, 0) rotateZ(${round(curl, 2)}deg)`;
       node.style.opacity = `${round(1 - state.tapeBreak * 0.85, 3)}`;
+    }
+
+    // Zakładki gasną razem z pęknięciem: raz zerwana taśma nie trzyma się
+    // już krawędzi, a animowanie ich odklejania byłoby detalem, którego
+    // przy tej prędkości i tak nikt nie zobaczy.
+    for (let i = 0; i < 2; i += 1) {
+      const node = tapeFoldRefs.current[i];
+      if (node) node.style.opacity = `${round(1 - state.tapeBreak, 3)}`;
     }
 
     if (softShadowRef.current) {
@@ -187,8 +199,16 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
           width: `${BOX.widthPx * 1.42}px`,
           height: `${BOX.depthPx * 0.52}px`,
           borderRadius: '50%',
+          /**
+           * Cień jest CHŁODNY i granatowy, nie czarny.
+           *
+           * Czerń jest w cieniu niemal zawsze błędem: realny cień ma barwę
+           * światła OTOCZENIA, a scenę oświetlają zimne, niebiesko-fioletowe
+           * plamy z tła. Czarna plama pod pudełkiem natychmiast czyta się
+           * jako ciężka i doklejona.
+           */
           background:
-            'radial-gradient(ellipse closest-side, rgba(38,24,12,0.95) 0%, rgba(38,24,12,0.55) 45%, rgba(38,24,12,0) 100%)',
+            'radial-gradient(ellipse closest-side, rgba(46,54,92,0.45) 0%, rgba(46,54,92,0.24) 45%, rgba(46,54,92,0) 100%)',
           transform: 'translate3d(-50%, 0, 0)',
         }}
       />
@@ -200,8 +220,11 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
           width: `${BOX.widthPx * CONTACT_SHADOW.widthRatio}px`,
           height: `${BOX.depthPx * 0.3}px`,
           borderRadius: '50%',
+          // Cień kontaktowy jest ciemniejszy i cieplejszy od miękkiego —
+          // to szczelina bez dostępu światła, więc dominuje w niej lokalna
+          // barwa przedmiotu, nie oświetlenia.
           background:
-            'radial-gradient(ellipse closest-side, rgba(24,14,6,1) 0%, rgba(24,14,6,0.7) 55%, rgba(24,14,6,0) 100%)',
+            'radial-gradient(ellipse closest-side, rgba(58,44,32,0.62) 0%, rgba(58,44,32,0.38) 55%, rgba(58,44,32,0) 100%)',
           transform: 'translate3d(-50%, 0, 0)',
         }}
       />
@@ -225,12 +248,37 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
             height: `${BOX.heightPx}px`,
             transform: `translate(-50%, -50%) translateZ(${HALF_D}px)`,
             ...cardboardSurface({
-              gradient: `linear-gradient(158deg, ${CARDBOARD.light} 0%, ${CARDBOARD.base} 52%, ${CARDBOARD.dark} 100%)`,
-              // Przyciemnienie przy wszystkich krawędziach + mocniejsze u dołu,
-              // gdzie ściana schodzi się z podłożem.
-              occlusion:
-                'inset 0 -26px 30px -18px rgba(48,28,12,0.55), inset 0 14px 26px -16px rgba(48,28,12,0.30), inset 18px 0 26px -20px rgba(48,28,12,0.35), inset -18px 0 26px -20px rgba(48,28,12,0.35)',
-              edgeLight: 'inset 0 1px 0 rgba(255,238,214,0.42)',
+              /**
+               * Gradient opisuje KIERUNEK ŚWIATŁA, a nie „ładny przejście".
+               * Źródło jest u góry po lewej, więc jasność spada po przekątnej
+               * w prawo w dół. Ten sam kierunek obowiązuje na każdej ściance —
+               * niespójne kierunki natychmiast rozbijają bryłę.
+               */
+              gradient: `linear-gradient(152deg, ${CARDBOARD.light} 0%, ${CARDBOARD.base} 54%, ${CARDBOARD.dark} 100%)`,
+              occlusion: [
+                'inset 0 -30px 34px -20px rgba(96,66,38,0.42)',
+                'inset 0 16px 28px -18px rgba(96,66,38,0.22)',
+                'inset 20px 0 30px -24px rgba(96,66,38,0.26)',
+                'inset -20px 0 30px -24px rgba(96,66,38,0.26)',
+              ].join(', '),
+              /**
+               * FAZOWANIE + ŚWIATŁO KONTUROWE.
+               *
+               * Jasna nitka u góry i ciemna u dołu to fazka: żaden realny
+               * przedmiot nie ma nieskończenie ostrej krawędzi, a to właśnie
+               * ten jeden piksel odróżnia bryłę od prostokąta.
+               *
+               * Do tego kolorowe refleksy z tła — chłodny od lewej, fioletowy
+               * od prawej. Pudełko stoi w scenie oświetlonej zimnymi plamami
+               * światła, więc jego krawędzie MUSZĄ łapać ich barwę. Bez tego
+               * wygląda jak wycięte z innego zdjęcia.
+               */
+              edgeLight: [
+                `inset 0 1.5px 0 ${CARDBOARD.bevelLight}`,
+                `inset 0 -1px 0 ${CARDBOARD.bevelDark}`,
+                `inset 3px 0 10px -6px ${RIM_LIGHT.cool}`,
+                `inset -3px 0 10px -6px ${RIM_LIGHT.violet}`,
+              ].join(', '),
             }),
           }}
         >
@@ -245,7 +293,7 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
             height: `${BOX.heightPx}px`,
             transform: `translate(-50%, -50%) rotateY(180deg) translateZ(${HALF_D}px)`,
             ...cardboardSurface({
-              gradient: `linear-gradient(158deg, ${CARDBOARD.base} 0%, ${CARDBOARD.dark} 100%)`,
+              gradient: `linear-gradient(152deg, ${CARDBOARD.base} 0%, ${CARDBOARD.dark} 100%)`,
             }),
           }}
         />
@@ -260,10 +308,19 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
             height: `${BOX.heightPx}px`,
             transform: `translate(-50%, -50%) rotateY(90deg) translateZ(${HALF_W}px)`,
             ...cardboardSurface({
-              gradient: `linear-gradient(172deg, ${CARDBOARD.base} 0%, ${CARDBOARD.dark} 74%, #7B5837 100%)`,
-              occlusion:
-                'inset 0 -24px 28px -18px rgba(40,22,8,0.62), inset 22px 0 30px -22px rgba(40,22,8,0.55)',
-              edgeLight: 'inset 0 1px 0 rgba(255,235,208,0.30)',
+              // Ściana odwrócona od światła — wyraźnie ciemniejsza.
+              // Zbyt zbliżone jasności ścian to najczęstszy powód, dla którego
+              // bryła w CSS 3D wygląda jak płaski rysunek pudełka.
+              gradient: `linear-gradient(168deg, ${CARDBOARD.base} 0%, ${CARDBOARD.dark} 72%, #8F6C48 100%)`,
+              occlusion: [
+                'inset 0 -26px 30px -20px rgba(88,60,34,0.5)',
+                'inset 24px 0 32px -26px rgba(88,60,34,0.42)',
+              ].join(', '),
+              edgeLight: [
+                `inset 0 1.5px 0 ${CARDBOARD.bevelLight}`,
+                `inset 0 -1px 0 ${CARDBOARD.bevelDark}`,
+                `inset -3px 0 12px -6px ${RIM_LIGHT.violet}`,
+              ].join(', '),
             }),
           }}
         />
@@ -276,10 +333,16 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
             height: `${BOX.heightPx}px`,
             transform: `translate(-50%, -50%) rotateY(-90deg) translateZ(${HALF_W}px)`,
             ...cardboardSurface({
-              gradient: `linear-gradient(188deg, ${CARDBOARD.light} 0%, ${CARDBOARD.base} 62%, ${CARDBOARD.dark} 100%)`,
-              occlusion:
-                'inset 0 -24px 28px -18px rgba(40,22,8,0.55), inset -22px 0 30px -22px rgba(40,22,8,0.45)',
-              edgeLight: 'inset 0 1px 0 rgba(255,238,214,0.38)',
+              gradient: `linear-gradient(192deg, ${CARDBOARD.light} 0%, ${CARDBOARD.base} 60%, ${CARDBOARD.dark} 100%)`,
+              occlusion: [
+                'inset 0 -26px 30px -20px rgba(88,60,34,0.44)',
+                'inset -24px 0 32px -26px rgba(88,60,34,0.34)',
+              ].join(', '),
+              edgeLight: [
+                `inset 0 1.5px 0 ${CARDBOARD.bevelLight}`,
+                `inset 0 -1px 0 ${CARDBOARD.bevelDark}`,
+                `inset 3px 0 12px -6px ${RIM_LIGHT.cool}`,
+              ].join(', '),
             }),
           }}
         />
@@ -294,6 +357,39 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
             background: CARDBOARD.interior,
           }}
         />
+
+        {/* Zakładki taśmy zawinięte na ściany przednią i tylną.
+            To ONE sprzedają, że folia jest naklejona na przedmiot, a nie
+            narysowana na jego widoku z góry: prawdziwa taśma zawsze
+            przechodzi przez krawędź i schodzi kawałek po ścianie. */}
+        {[1, -1].map((side) => (
+          <div
+            key={`tape-fold-${side}`}
+            ref={(node) => {
+              tapeFoldRefs.current[side === 1 ? 0 : 1] = node;
+            }}
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              width: `${BOX.widthPx * 0.34}px`,
+              height: `${TAPE_FOLD_PX}px`,
+              transformOrigin: '50% 0',
+              transform: [
+                `translate(-50%, 0)`,
+                side === 1 ? '' : 'rotateY(180deg)',
+                `translateY(${-HALF_H}px)`,
+                `translateZ(${HALF_D + 0.3}px)`,
+              ]
+                .filter(Boolean)
+                .join(' '),
+              ...TAPE,
+              // Zagięcie jest ciemniejsze: przechodzi przez krawędź, więc
+              // łapie mniej światła niż płaska część na górze.
+              filter: 'brightness(0.86)',
+            }}
+          />
+        ))}
 
         {/* --- WNĘTRZE ---
             Brief: "Wnętrze pudełka jest ciemne, żeby to, co z niego wychodzi,
@@ -397,10 +493,21 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
               left: '50%',
               top: '50%',
               width: `${BOX.widthPx * 0.34}px`,
-              height: `${(BOX.depthPx + 16) / 2}px`,
-              // rotateX(90) kładzie płaszczyznę na GÓRZE bryły; rotateX(-90)
-              // umieściłaby ją na spodzie, czyli tam, gdzie taśmy nikt nie zobaczy.
-              transform: `translate(-50%, ${half === 0 ? '-100%' : '0'}) rotateX(90deg) translateZ(${HALF_H + 1.2}px)`,
+              /**
+               * Taśma kończy się DOKŁADNIE na krawędzi bryły.
+               *
+               * Wcześniej wystawała po 8 px z każdej strony i te nadwyżki
+               * wisiały płasko w powietrzu — to był ten „odstający element UI",
+               * a nie folia naklejona na przedmiot. Zawinięcie na ściany
+               * realizują osobne zakładki niżej.
+               */
+              height: `${BOX.depthPx / 2}px`,
+              /**
+               * rotateX(90) kładzie płaszczyznę na GÓRZE bryły. Odstęp
+               * zredukowany do 0,3 px: folia ma PRZYLEGAĆ, a nie unosić się.
+               * Zero dałoby migotanie z płaszczyzną klap (z-fighting).
+               */
+              transform: `translate(-50%, ${half === 0 ? '-100%' : '0'}) rotateX(90deg) translateZ(${HALF_H + 0.3}px)`,
               transformStyle: 'preserve-3d',
             }}
           >
@@ -527,9 +634,13 @@ const Flap = ({
         transform: `rotateX(${FLAPS.closedDeg}deg)`,
         transformStyle: 'preserve-3d',
         ...cardboardSurface({
-          gradient: `linear-gradient(180deg, ${CARDBOARD.light} 0%, ${CARDBOARD.base} 62%, ${CARDBOARD.dark} 100%)`,
+          gradient: `linear-gradient(178deg, ${CARDBOARD.light} 0%, ${CARDBOARD.base} 60%, ${CARDBOARD.dark} 100%)`,
           // Klapa jest przyciemniona bliżej zawiasu — tam wpada najmniej światła.
-          occlusion: 'inset 0 20px 26px -18px rgba(48,28,12,0.55)',
+          occlusion: 'inset 0 22px 28px -20px rgba(88,60,34,0.45)',
+          edgeLight: [
+            `inset 0 -1.5px 0 ${CARDBOARD.bevelLight}`,
+            `inset 0 1px 0 ${CARDBOARD.bevelDark}`,
+          ].join(', '),
         }),
       }}
     >

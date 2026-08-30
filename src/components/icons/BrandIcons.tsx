@@ -124,7 +124,7 @@ export const BrandIcons = ({ scrollRef }: BrandIconsProps): React.ReactElement =
                 height: `${TILE.sizePx * 0.2}px`,
                 borderRadius: '50%',
                 background:
-                  'radial-gradient(ellipse closest-side, rgba(28,18,42,0.85) 0%, rgba(28,18,42,0) 100%)',
+                  'radial-gradient(ellipse closest-side, rgba(46,54,92,0.5) 0%, rgba(46,54,92,0) 100%)',
                 transform: 'translate3d(-50%, 0, 0)',
                 opacity: 0,
               }}

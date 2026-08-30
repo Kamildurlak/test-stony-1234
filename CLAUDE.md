@@ -17,10 +17,30 @@ tło. Na ciemnym kafelku znak byłby niewidoczny, więc renderujemy go w bieli �
 to drugi oficjalny wariant tego znaku. Uzasadnienie stoi przy definicji
 w `src/config/logos.ts`.
 
-**Paleta.** Jasne tło z rozmytymi plamami koloru (zmiana kierunku na prośbę
-klienta — pierwotnie było `#07070B`). Konsekwencja: na jasnym tle nie działa
-glow, więc wszędzie, gdzie brief mówi „poświata", realizujemy to kolorowym
-miękkim cieniem. Szczegóły przy `GLOW` w `src/config/scene.ts`.
+**Paleta.** Jasne, CHŁODNE tło (`#F1F3F9` → `#E7EAF4`), nigdy czysta biel.
+Sześć dużych, miękkich świateł w barwach social mediów plus trzy świetlne
+fale. Kluczowe rozróżnienie: to są ŹRÓDŁA ŚWIATŁA o niskim kryciu, a nie
+kolorowe plamy — plama jest widoczna, światło jest odczuwalne.
+
+Konsekwencja jasnego tła: nie działa na nim glow, więc wszędzie, gdzie brief
+mówi „poświata", realizujemy to kolorowym miękkim cieniem (`GLOW` w scene.ts).
+
+Cienie są CHŁODNE i granatowe, nie czarne — realny cień ma barwę światła
+otoczenia, a scenę oświetlają zimne plamy.
+
+**Materiał pudełka — dwie odwrócone decyzje.** Klient najpierw dostał karton
+z anizotropowym włóknem papieru i przybrudzeniem (to one zamieniały płaską
+bryłę w karton), a potem poprosił o powierzchnię idealnie czystą, bez ziarna
+i szumu. **Nie dodawać z powrotem tekstury.** Realizm niesie teraz fazowanie
+krawędzi (`CARDBOARD.bevelLight`/`bevelDark`) i kolorowe światło konturowe
+odbite od tła (`RIM_LIGHT`).
+
+**Ruch pudełka — druga odwrócona decyzja.** Pierwotny brief żądał wyraźnego
+PODSKOKU z fizyką: parabola, squash and stretch, cień reagujący na wysokość.
+Klient poprosił potem o ruch „bardzo subtelny", bez agresywnych odbić.
+Zostało delikatne unoszenie (`FLOAT`). **Nie przywracać podskoku bez pytania.**
+Świadomie straciliśmy squash and stretch, czyli najmocniejszy sygnał masy —
+ciężar niosą teraz światło, cień kontaktowy i proporcje.
 
 **Typografia.** Cabinet Grotesk (nagłówki) + Inter (tekst). Cabinet hostuje
 Fontshare; w jednoplikowym podglądzie (`scripts/build-preview.mjs`) podmieniamy

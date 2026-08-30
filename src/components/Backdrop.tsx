@@ -1,40 +1,44 @@
-import { useRef } from 'react';
 import { BACKDROP, PALETTE } from '../config/scene';
-import { round } from '../lib/math';
-import { TICK_PRIORITY } from '../lib/ticker';
-import { useTicker } from '../hooks/useTicker';
 
 /**
- * Tło — jasna baza z rozmytymi plamami koloru.
+ * Tło sceny: jasna, chłodna baza plus warstwy miękkiego światła.
  *
- * Konstrukcja: każda plama to osobny div z gradientem promienistym i mocnym
- * rozmyciem. Świadomie NIE jeden wielowarstwowy `background` na jednym
- * elemencie — wtedy nie dałoby się animować plam niezależnie, a cały sens
- * polega na tym, że dryfują we WŁASNYCH fazach. Wspólny ruch czytałby się
- * jako przesuwanie obrazka.
+ * DWIE DECYZJE, KTÓRE DECYDUJĄ O CAŁEJ RESZCIE:
  *
- * Wydajność: rozmycie liczone jest raz przy pierwszym renderze i utrwalane
- * w warstwie kompozycji. Animujemy wyłącznie `transform`, więc GPU przesuwa
- * gotową, rozmytą teksturę zamiast przeliczać rozmycie w każdej klatce.
- * Gdybyśmy ruszali `background-position` albo promień gradientu, każda klatka
- * oznaczałaby ponowne rasteryzowanie czterech dużych plam — i to jest
- * dokładnie ta różnica, która na telefonie decyduje o 60 vs 20 fps.
+ * 1. To NIE jest „kolorowe tło", tylko OŚWIETLENIE. Każda plama ma krycie
+ *    rzędu 0.15–0.3 i średnicę liczoną w dziesiątkach procent ekranu.
+ *    Plama jest widoczna; światło jest odczuwalne. Ta różnica jest jedyną
+ *    rzeczą, która dzieli tło agencji od tła wygenerowanego w pięć minut.
+ *
+ * 2. Wszystko animuje CSS, nic nie idzie przez pętlę rAF.
+ *
+ *    Poprzednia wersja przeliczała pozycje plam w każdej klatce w tickerze.
+ *    Działało, ale to była praca wykonywana bez powodu: ruch tła nie zależy
+ *    ani od scrolla, ani od żadnego stanu sceny. Animacja CSS na `transform`
+ *    i `opacity` jest w całości obsługiwana przez kompozytor — kosztuje ZERO
+ *    czasu w klatce i zwalnia budżet dla pudełka, ikon i osi czasu, czyli
+ *    dla rzeczy, które faktycznie muszą być zsynchronizowane ze scrollem.
+ *
+ * Zasada, do której to prowadzi: przez ticker idzie WYŁĄCZNIE to, co musi
+ * być zsynchronizowane z resztą sceny. Reszta należy do CSS.
  */
+
 /**
- * Buduje gradient o zaniku gaussowskim.
+ * Gradient o zaniku gaussowskim.
  *
  * Ręcznie dobrane przystanki zawsze zostawiają widoczne kręgi — oko jest
- * wyjątkowo czułe na nieciągłość DRUGIEJ pochodnej jasności (efekt pasm Macha).
- * Dlatego zamiast zgadywać wartości, liczymy je z krzywej dzwonowej.
- *
- * Krzywa jest dodatkowo przesunięta i przeskalowana tak, żeby na krawędzi
- * osiągała DOKŁADNIE zero. Bez tej korekty zostaje resztkowa alfa rzędu 2%,
+ * wyjątkowo czułe na nieciągłość drugiej pochodnej jasności (pasma Macha).
+ * Liczymy je więc z krzywej dzwonowej, przesuniętej tak, żeby na krawędzi
+ * osiągała DOKŁADNIE zero: bez tej korekty zostaje resztkowa alfa rzędu 2%,
  * która rysuje idealny okrąg — czyli dokładnie to, co próbujemy ukryć.
+ *
+ * `closest-side` jest obowiązkowe: domyślnie gradient mierzy 100% do
+ * najdalszego ROGU, a `border-radius: 50%` przycina go do okręgu wpisanego,
+ * więc bez tego jest obcinany przy niezerowym kryciu.
  */
-const gaussianGradient = (color: string, steps = 12, falloff = 4): string => {
+const gaussianGradient = (color: string, steps = 14, falloff = 4.2): string => {
   const edge = Math.exp(-falloff);
   const stops: string[] = [];
-
   for (let i = 0; i <= steps; i += 1) {
     const r = i / steps;
     const raw = Math.exp(-falloff * r * r);
@@ -44,106 +48,137 @@ const gaussianGradient = (color: string, steps = 12, falloff = 4): string => {
       .padStart(2, '0');
     stops.push(`${color}${hex} ${Math.round(r * 100)}%`);
   }
-
-  /**
-   * `closest-side` jest tu OBOWIĄZKOWE, nie stylistyczne.
-   *
-   * Domyślnie radial-gradient mierzy 100% do najdalszego ROGU elementu,
-   * podczas gdy `border-radius: 50%` przycina go do okręgu wpisanego,
-   * czyli do najbliższego BOKU. Gradient jest więc obcinany w miejscu,
-   * gdzie ma jeszcze ~12% krycia — i dostajemy ostry okrąg dokładnie tam,
-   * gdzie miało być niewidoczne wygaszenie.
-   */
   return `radial-gradient(circle closest-side, ${stops.join(', ')})`;
 };
 
-export const Backdrop = (): React.ReactElement => {
-  const blobRefs = useRef<Array<HTMLDivElement | null>>([]);
-
-  useTicker((_deltaS, elapsedS) => {
-    for (let i = 0; i < BACKDROP.blobs.length; i += 1) {
-      const node = blobRefs.current[i];
-      if (!node) continue;
-
+export const Backdrop = (): React.ReactElement => (
+  <div
+    aria-hidden="true"
+    className="pointer-events-none fixed inset-0 -z-10 overflow-hidden"
+    style={{
       /**
-       * Każda plama ma własne przesunięcie fazowe i lekko inny okres.
-       * Gdyby wszystkie dryfowały zgodnie, po kilkunastu sekundach oko
-       * wyłapałoby wspólny rytm — a to natychmiast zdradza pętlę.
+       * Baza jest GRADIENTEM, nie płaskim kolorem. Nawet ledwie zauważalne
+       * pociemnienie ku dołowi daje przestrzeni kierunek — bez niego kadr
+       * jest kartką papieru, a nie pomieszczeniem.
        */
-      const phase = (i * Math.PI * 2) / BACKDROP.blobs.length;
-      const period = BACKDROP.driftPeriodS * (1 + i * 0.17);
-      const t = (elapsedS / period) * Math.PI * 2;
+      background: `linear-gradient(168deg, ${PALETTE.bg} 0%, ${PALETTE.bg} 42%, ${PALETTE.bgDeep} 100%)`,
+    }}
+  >
+    <style>{`
+      @keyframes bd-drift {
+        0%   { transform: translate3d(0, 0, 0) scale(1); }
+        50%  { transform: translate3d(var(--dx), var(--dy), 0) scale(var(--s)); }
+        100% { transform: translate3d(0, 0, 0) scale(1); }
+      }
+      @keyframes bd-pulse {
+        0%, 100% { opacity: var(--o-min); }
+        50%      { opacity: var(--o-max); }
+      }
+      @keyframes bd-wave {
+        0%   { transform: translate3d(-58%, 0, 0); }
+        100% { transform: translate3d(58%, 0, 0); }
+      }
 
-      const dx = Math.sin(t + phase) * BACKDROP.driftAmplitudePct;
-      // Pionowo o połowę mniej i z innym mnożnikiem częstotliwości —
-      // złożenie dwóch niewspółmiernych sinusów daje tor zbliżony do
-      // krzywej Lissajous, czyli ruch po łuku zamiast po prostej.
-      const dy = Math.cos(t * 0.61 + phase) * BACKDROP.driftAmplitudePct * 0.5;
+      /*
+        Przy prefers-reduced-motion tło ZOSTAJE, ale przestaje się ruszać.
+        Kompozycja świateł jest częścią projektu, nie animacją — nie ma
+        powodu jej zabierać. Zabieramy sam ruch.
+      */
+      @media (prefers-reduced-motion: reduce) {
+        [data-bd] { animation: none !important; }
+      }
 
-      node.style.transform = `translate3d(${round(dx, 2)}%, ${round(dy, 2)}%, 0)`;
-    }
-  }, TICK_PRIORITY.RENDER);
+      /*
+        Na wąskich ekranach światła są mniejsze i słabsze.
+        Te same wartości co na desktopie dałyby zalanie kadru kolorem —
+        przy szerokości 375 px plama o średnicy 60vmax to praktycznie
+        cały ekran, a treść musi zostać czytelna.
+      */
+      @media (max-width: 640px) {
+        [data-bd-light] { opacity: calc(var(--o-min) * 0.62) !important; }
+        [data-bd-wave]  { opacity: calc(var(--w-o) * 0.5) !important; }
+      }
+    `}</style>
 
-  return (
-    <div
-      aria-hidden="true"
-      className="pointer-events-none fixed inset-0 -z-10 overflow-hidden"
-      style={{ backgroundColor: PALETTE.bg }}
-    >
-      {BACKDROP.blobs.map((blob, index) => (
-        <div
-          key={blob.color}
-          ref={(node) => {
-            blobRefs.current[index] = node;
-          }}
-          className="absolute will-change-transform"
-          style={{
-            left: `${blob.x}%`,
-            top: `${blob.y}%`,
-            width: `${blob.size}vmax`,
-            height: `${blob.size}vmax`,
-            marginLeft: `${-blob.size / 2}vmax`,
-            marginTop: `${-blob.size / 2}vmax`,
-            borderRadius: '50%',
-            opacity: blob.opacity,
-            /**
-             * ŻADNEGO `filter: blur()` — i to nie jest drobiazg.
-             *
-             * Pierwsza wersja miała tu `blur(60px)`. Zmierzone: 13 fps.
-             * Po zdjęciu samego rozmycia: 53 fps. Czterokrotna różnica
-             * z jednej właściwości.
-             *
-             * Powód: rozmycie na elemencie wielkości pół ekranu zmusza
-             * przeglądarkę do rasteryzowania ogromnej powierzchni z dużym
-             * promieniem próbkowania. Nie ratuje tego nawet animowanie
-             * wyłącznie transformu — a to jest właśnie ta pułapka, przez którą
-             * "przecież animuję tylko transform" bywa nieprawdą w praktyce.
-             *
-             * Miękkość odzyskujemy za darmo: gradient promienisty z kilkoma
-             * przystankami wygasającymi wykładniczo daje krawędź nie do
-             * odróżnienia od rozmytej, a kosztuje jedno rysowanie przy
-             * pierwszym renderze.
-             */
-            background: gaussianGradient(blob.color),
-          }}
-        />
-      ))}
-
-      {/*
-        Delikatne ziarno na całości. Jeden element, jedna tekstura w data URI.
-        Powód jest ten sam co wyżej: idealnie gładkie gradienty wyglądają
-        cyfrowo i tanio. Ziarno to najstarszy trik z retuszu i nadal działa —
-        daje wrażenie materiału zamiast wypełnienia.
-      */}
+    {/* --- ŚWIATŁA --- */}
+    {BACKDROP.lights.map((light, i) => (
       <div
-        className="absolute inset-0"
+        key={light.color + String(i)}
+        data-bd=""
+        data-bd-light=""
         style={{
-          opacity: 0.32,
-          mixBlendMode: 'multiply',
-          backgroundImage:
-            "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.35'/%3E%3C/svg%3E\")",
+          position: 'absolute',
+          left: `${light.x}%`,
+          top: `${light.y}%`,
+          width: `${light.size}vmax`,
+          height: `${light.size}vmax`,
+          marginLeft: `${-light.size / 2}vmax`,
+          marginTop: `${-light.size / 2}vmax`,
+          borderRadius: '50%',
+          background: gaussianGradient(light.color),
+          ['--dx' as string]: `${light.dx}%`,
+          ['--dy' as string]: `${light.dy}%`,
+          // Bardzo delikatne pulsowanie skali. Powyżej kilku procent zaczyna
+          // być widoczne jako „oddychanie", a ma pozostać nieuchwytne.
+          ['--s' as string]: '1.06',
+          ['--o-min' as string]: `${light.opacity}`,
+          ['--o-max' as string]: `${light.opacity * 1.35}`,
+          opacity: light.opacity,
+          animation: `bd-drift ${light.driftS}s ease-in-out infinite, bd-pulse ${light.pulseS}s ease-in-out infinite`,
+          willChange: 'transform, opacity',
         }}
       />
-    </div>
-  );
-};
+    ))}
+
+    {/* --- ŚWIETLNE FALE --- */}
+    {BACKDROP.waves.map((wave, i) => (
+      <div
+        key={`wave-${i}`}
+        style={{
+          position: 'absolute',
+          left: '-30%',
+          top: `${wave.y}%`,
+          width: '160%',
+          height: `${wave.thickness}vmax`,
+          marginTop: `${-wave.thickness / 2}vmax`,
+          transform: `rotate(${wave.angle}deg)`,
+          // Obrót na kontenerze, przesuwanie na dziecku — inaczej animacja
+          // transformu skasowałaby obrót i fala wyprostowałaby się w locie.
+          overflow: 'visible',
+        }}
+      >
+        <div
+          data-bd=""
+          data-bd-wave=""
+          style={{
+            width: '100%',
+            height: '100%',
+            background: `linear-gradient(90deg, transparent 0%, ${wave.color} 45%, ${wave.color} 55%, transparent 100%)`,
+            // Miękkie wygaszenie w pionie: bez tego pasmo ma ostre krawędzie
+            // i czyta się jako wstążka, a nie jako przepływ światła.
+            maskImage: 'linear-gradient(180deg, transparent 0%, #000 50%, transparent 100%)',
+            WebkitMaskImage: 'linear-gradient(180deg, transparent 0%, #000 50%, transparent 100%)',
+            ['--w-o' as string]: `${wave.opacity}`,
+            opacity: wave.opacity,
+            animation: `bd-wave ${wave.durationS}s ease-in-out infinite alternate`,
+            willChange: 'transform',
+          }}
+        />
+      </div>
+    ))}
+
+    {/*
+      Rozjaśnienie środka.
+      Hierarchia z brief'u: tło nie może konkurować z produktem. Delikatna
+      poświata bazowego koloru w centrum odsuwa światła na obrzeża kadru
+      i zostawia scenie spokojne miejsce na pudełko i treść.
+    */}
+    <div
+      style={{
+        position: 'absolute',
+        inset: 0,
+        background: `radial-gradient(ellipse 54% 46% at 50% 46%, ${PALETTE.bg}A8 0%, ${PALETTE.bg}4D 52%, transparent 100%)`,
+      }}
+    />
+  </div>
+);
