@@ -17,8 +17,8 @@
  * margines oddechu. Wszystkie wartości w scene.ts są liczone w tej skali.
  */
 export const SCENE_DESIGN = {
-  widthPx: 890,
-  heightPx: 890,
+  widthPx: 1188,
+  heightPx: 1188,
 } as const;
 
 /**

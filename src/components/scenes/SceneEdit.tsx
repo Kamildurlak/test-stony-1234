@@ -22,14 +22,14 @@ import type { ScrollState } from '../../hooks/useScrollProgress';
  *
  * GEOMETRIA — i to jest miejsce, w którym łatwo się pomylić.
  *
- * Karta ma 380 px szerokości przy promieniu orbity 380 px i kafelku 84 px.
+ * Karta ma 520 px szerokości przy promieniu orbity 490 px i kafelku 168 px.
  * Najciaśniejszym miejscem NIE jest odległość ikony od krawędzi karty,
  * tylko od jej NAROŻNIKA. Pierwsza wersja liczyła wyłącznie odległości
  * prostopadłe do boków i wyszło z niej 88 px prześwitu; pomiar realnych
  * prostokątów w przeglądarce pokazał 32 px, bo ikona mija róg po skosie.
  *
- * Stąd promień podniesiony z 330 na 380 px. Wartość jest potwierdzona
- * pomiarem (scripts/geometry-check), nie wyliczeniem na kartce. Ponieważ
+ * Stąd promień podniesiony do 490 px. Wartość jest potwierdzona POMIAREM
+ * realnych prostokątów w przeglądarce, nie wyliczeniem na kartce. Ponieważ
  * karta i orbita skalują się JEDNYM współczynnikiem (lib/sceneScale.ts),
  * zmierzony prześwit zachowuje proporcję na każdym ekranie.
  */
@@ -280,7 +280,7 @@ export const SceneEdit = ({ scrollRef }: SceneEditProps): React.ReactElement => 
           data-timeline-card=""
           className="relative overflow-hidden"
           style={{
-            width: '380px',
+            width: '520px',
             borderRadius: '18px',
             background: 'linear-gradient(168deg, #1D1729 0%, #141020 60%, #100C1A 100%)',
             boxShadow:
@@ -468,7 +468,7 @@ export const SceneEdit = ({ scrollRef }: SceneEditProps): React.ReactElement => 
         {/* --- NAPIS POD GRAFIKĄ --- */}
         <h2
           ref={headingRef}
-          className="text-ink mt-6 text-center text-[30px] leading-tight will-change-transform"
+          className="text-ink mt-7 text-center text-[40px] leading-tight will-change-transform"
           style={{ opacity: 0, letterSpacing: '-0.025em' }}
         >
           Perfekcyjny montaż rolek.

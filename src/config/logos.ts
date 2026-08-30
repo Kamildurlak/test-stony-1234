@@ -56,9 +56,10 @@ export const LOGOS: readonly BrandLogo[] = [
  */
 export const TILE = {
   /** Bok kafelka w px, w skali projektu bazowego (patrz lib/sceneScale.ts). */
-  sizePx: 84,
+  /** Dwa razy wiecej niz poprzednio (84) — na prosbe klienta. */
+  sizePx: 168,
   /** Promień narożnika. Ten sam dla wszystkich czterech — o to cała rzecz. */
-  radiusPx: 22,
+  radiusPx: 42,
   background: '#17121F',
   /** Delikatne rozjaśnienie górnej krawędzi — kafelek ma być bryłą, nie plamą. */
   edgeLight: 'inset 0 1px 0 rgba(255,255,255,0.16)',

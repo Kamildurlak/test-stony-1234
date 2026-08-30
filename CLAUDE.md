@@ -61,6 +61,28 @@ albo `opacity`.
 między restartami maszyny. Miarodajne jest wyłącznie porównanie w obrębie
 jednego przebiegu.
 
+## Warstwy efektów
+
+Kolejność w drzewie `HeroScroll` JEST kolejnością rysowania i część z niej
+to nie styl, tylko mechanika:
+
+1. `Ambience` — dryfujące punkty tła. **Jedyna warstwa animowana przez CSS,
+   nie przez ticker.** Jej ruch nie zależy od niczego w scenie, a animacja
+   CSS na `transform`/`opacity` idzie w całości przez kompozytor, więc
+   kosztuje zero pracy w klatce.
+2. `OrbitTrails` — pierścień toru i smugi wiatru. Pod ikonami, żeby smuga
+   wychodziła spod kafelka. Cały efekt to JEDEN statyczny SVG obracany
+   jednym transformem — jeden zapis na klatkę niezależnie od liczby segmentów.
+3. `BrandIcons` — **musi być przed `CssBox`**, żeby przednia ściana kartonu
+   zasłaniała ikony, dopóki są w środku.
+4. `CssBox`
+5. `BurstParticles` — po pudełku, bo to błysk w powietrzu, nie przedmiot.
+6. `SceneEdit` — nad wszystkim, pierścień krąży za treścią.
+
+Kąt obiegu liczy JEDNA funkcja (`computeOrbitDeg` w `lib/iconPhysics.ts`),
+używana i przez ikony, i przez smugi. Gdyby każdy liczył go po swojemu,
+rozbieżność zaokrągleń odsunęłaby smugi od ikon.
+
 ## Weryfikacja geometrii
 
 Wymóg klienta: ikony nigdy nie mogą się stykać ani nachodzić na grafikę
@@ -69,6 +91,11 @@ nie na oko — elementy `[data-icon-tile]` i `[data-timeline-card]` są uchwytam
 dla tego testu. Uwaga: najciaśniejszym miejscem jest NAROŻNIK karty, nie jej
 krawędź; liczenie odległości prostopadłych daje wynik zawyżony o kilkadziesiąt
 procent.
+
+Przy zmianie wielkości kafelka trzeba przeskalować RAZEM z nim: promień
+orbity, `SCENE_DESIGN` w `lib/sceneScale.ts` oraz `launchSpreadPx`.
+To ostatnie łatwo przeoczyć — rozsunięcie mniejsze od szerokości kafelka
+nie rozdziela ikon przy wyskoku, tylko przesuwa stertę.
 
 ## Polecenia
 

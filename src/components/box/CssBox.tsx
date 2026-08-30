@@ -61,6 +61,16 @@ const faceBase: CSSProperties = {
   left: '50%',
   top: '50%',
   backfaceVisibility: 'hidden',
+  /**
+   * Minimalne zaokrąglenie narożników.
+   *
+   * Prawdziwy karton ma zmiękczone, lekko zagniecione krawędzie, nie ostre
+   * jak żyletka. Promień musi jednak zostać BARDZO mały: ściany to płaskie
+   * prostokąty w przestrzeni 3D, a nie prawdziwa bryła, więc przy większym
+   * zaokrągleniu przestają się schodzić i w narożnikach pojawiają się
+   * prześwity na tło.
+   */
+  borderRadius: `${BOX.cornerRadiusPx}px`,
 };
 
 interface CssBoxProps {

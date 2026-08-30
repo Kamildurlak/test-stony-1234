@@ -3,6 +3,9 @@ import { SCROLL } from '../config/scene';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { useScrollProgress } from '../hooks/useScrollProgress';
 import { AccessibleHeroContent } from './AccessibleHeroContent';
+import { Ambience } from './effects/Ambience';
+import { BurstParticles } from './effects/BurstParticles';
+import { OrbitTrails } from './effects/OrbitTrails';
 import { BrandIcons } from './icons/BrandIcons';
 import { CssBox } from './box/CssBox';
 import { SceneEdit } from './scenes/SceneEdit';
@@ -59,8 +62,21 @@ export const HeroScroll = (): React.ReactElement => {
             Zamiana miejscami sprawia, że ikony pojawiają się przed pudełkiem
             i cała iluzja wylatywania z wnętrza przestaje działać.
           */}
+          {/* Atmosfera na samym spodzie — animowana przez CSS, poza tickerem. */}
+          <Ambience />
+
+          {/* Tor ruchu ze smugami. Pod ikonami, żeby smuga wychodziła
+              spod kafelka, a nie leżała na nim. */}
+          <OrbitTrails scrollRef={scrollRef} />
+
           <BrandIcons scrollRef={scrollRef} />
+
           <CssBox scrollRef={scrollRef} />
+
+          {/* Rozprysk NAD pudełkiem: to jest błysk w powietrzu, a nie
+              przedmiot w scenie, więc nic go nie zasłania. Stąd pozycja
+              PO pudełku — w tym drzewie o wierzchu decyduje kolejność. */}
+          <BurstParticles scrollRef={scrollRef} />
 
           {/* Sceny treści lądują w ŚRODKU formacji ikon, więc rysują się
               po pudełku i po ikonach. */}

@@ -67,17 +67,17 @@ export const PHASES = {
   IDLE: [0.0, 0.05],
 
   /** Zamach. Pudełko przykuca przed wybuchem. Bez tego otwarcie czyta się jak glitch. */
-  ANTICIPATION: [0.0, 0.05],
+  ANTICIPATION: [0.0, 0.045],
 
   /**
    * Otwarcie klap. DWA RAZY szybciej niż w pierwszej wersji (było 6% scrolla,
    * jest 3%). Na życzenie klienta — i słusznie: wystrzał ma zaskakiwać,
    * a rozciągnięty wystrzał przestaje być wystrzałem.
    */
-  OPEN: [0.05, 0.08],
+  OPEN: [0.045, 0.06],
 
   /** Wylot ikon: najpierw pionowo w górę, potem rozejście po okręgu. */
-  ICONS: [0.07, 0.15],
+  ICONS: [0.055, 0.17],
 
   /**
    * Upadek pudełka. Startuje DOKŁADNIE tam, gdzie ikony, i trwa trzy razy
@@ -88,10 +88,10 @@ export const PHASES = {
    * o jednoczesność i tak zostało — ale to jest miejsce, do którego warto
    * wrócić, jeśli wybuch zacznie się czytać jako chaotyczny.
    */
-  FALL: [0.07, 0.105],
+  FALL: [0.058, 0.078],
 
   /** Scena 1: "Idealny montaż" — wchodzi, gdy formacja rusza po okręgu. */
-  SCENE_EDIT: [0.15, 0.42],
+  SCENE_EDIT: [0.17, 0.42],
 
   /** Scena 2: "Viralowe treści" — licznik wyświetleń + krzywa wzrostu. */
   SCENE_VIRAL: [0.46, 0.66],
@@ -250,57 +250,75 @@ export const TAPE_BREAK = {
 export const ICONS = {
   /**
    * Opóźnienia startu jako ułamek fazy ICONS. Kolejność zgodna z LOGOS:
-   * TikTok, Instagram, YouTube, Facebook.
-   *
-   * Bardzo małe i nierówne. Cała czwórka ma opuścić pudełko jak jeden ładunek,
-   * ale nie w tej samej klatce — równy start czyta się jak jedna klatka
-   * kluczowa, a nie jak cztery przedmioty.
+   * TikTok, Instagram, YouTube, Facebook. Nierówne — cztery przedmioty,
+   * nie jedna klatka kluczowa.
    */
   delays: [0.0, 0.05, 0.02, 0.08],
 
   /** Ułamek fazy na przelot jednej ikony. */
-  duration: 0.82,
+  duration: 0.84,
 
   /**
-   * Formacja to OKRĄG, nie elipsa.
+   * Etap 1 — WYSKOK. Ułamek lotu, w którym ikona wyrzucana jest pionowo
+   * w górę, prosto z gardzieli pudełka.
+   */
+  launchRatio: 0.34,
+
+  /**
+   * Etap 2 — USTAWIENIE. Ułamek lotu, po którym ikona jest już na swoim
+   * miejscu na okręgu. Między launchRatio a settleRatio przemieszcza się
+   * ze szczytu wyskoku na swoją pozycję.
+   */
+  settleRatio: 0.78,
+
+  /**
+   * Boczne rozsunięcie przy wyskoku, w px.
+   * Bez tego cztery ikony lecą po tej samej pionowej linii i układają się
+   * w słupek, który czyta się jak sterta, a nie jak wyrzut.
+   */
+  /**
+   * Wartości MUSZĄ rosnąć razem z kafelkiem: rozsunięcie mniejsze od jego
+   * szerokości nie rozdziela ikon, tylko przesuwa stertę. Przy kafelku
+   * 168 px potrzeba grubo ponad 168 px rozrzutu, żeby w chwili wyskoku
+   * widać było cztery osobne przedmioty.
+   */
+  launchSpreadPx: [-186, 82, -64, 214],
+
+  /**
+   * Wysokość szczytu wyskoku jako ułamek promienia orbity.
+   * Poniżej 1, żeby ikony nie wylatywały poza kadr przed ustawieniem się.
+   */
+  apexRatio: 0.74,
+
+  /**
+   * Formacja to OKRĄG, nie elipsa: na elipsie równe kąty NIE dają równych
+   * odległości, a wymogiem jest stały odstęp. Na okręgu cztery znaki co 90°
+   * są równo oddalone zawsze — gwarancja geometryczna, nie dobór wartości.
    *
-   * Wcześniej była tu elipsa — dawała namiastkę głębi, ale miała wadę
-   * dyskwalifikującą: na elipsie równe kąty NIE dają równych odległości.
-   * Ikony raz zbliżałyby się do siebie, raz oddalały, a wymóg brzmi:
-   * stały, wyraźny odstęp przez cały czas. Na okręgu cztery znaki
-   * co 90° są równo oddalone zawsze — to gwarancja geometryczna,
-   * nie efekt dobrego doboru wartości.
+   * Promień podniesiony z 380 na 490 px, bo kafelki urosły dwukrotnie.
+   * Wartość potwierdzona pomiarem realnych prostokątów, nie wyliczeniem:
+   * najciaśniejszym miejscem jest NAROŻNIK karty w środku, mijany po skosie.
    */
-  orbitRadiusPx: 380,
+  orbitRadiusPx: 490,
 
-  /**
-   * Kąty docelowe, w stopniach od góry. Cztery równe ćwiartki.
-   * Każda ikona leci PROSTO na swoje miejsce — bez zbiórki w jednym punkcie
-   * i bez rozjeżdżania się po obwodzie, o co prosił klient wprost.
-   */
+  /** Kąty docelowe, w stopniach od góry. Cztery równe ćwiartki. */
   slotAngles: [0, 90, 180, 270],
 
   /** Skala startowa w gardzieli pudełka. Mała = wrażenie głębi przy wylocie. */
-  startScale: 0.22,
+  startScale: 0.16,
+
+  /** Okres pełnego obiegu formacji w sekundach. */
+  orbitPeriodS: 16,
 
   /**
-   * Okres pełnego obiegu formacji w sekundach.
+   * Kiedy obieg osiąga pełną prędkość, liczone od settleRatio.
    *
-   * 15 s przy promieniu 330 px daje ok. 140 px/s — ruch wyraźnie widoczny
-   * i dynamiczny, a jednocześnie na tyle spokojny, że nie odciąga uwagi
-   * od treści w środku pierścienia.
+   * Klient chce kolejności „wyskok → ustawienie → dopiero obrót", ale
+   * bez martwego momentu. Obieg narasta więc na ostatnim odcinku ustawiania:
+   * ikona dojeżdża na miejsce już w ruchu, a mimo to widz odbiera trzy
+   * osobne zdarzenia.
    */
-  orbitPeriodS: 15,
-
-  /**
-   * Ułamek lotu, po którym obieg osiąga pełną prędkość.
-   *
-   * Klucz do wymogu „bez żadnych nagłych zatrzymań": obrót narasta JUŻ
-   * W TRAKCIE lotu, więc w chwili dotarcia na miejsce ikona jest już
-   * w pełnym ruchu. Gdyby obieg startował po wylądowaniu, powstałby
-   * moment bezruchu — dokładnie to, czego klient nie chce.
-   */
-  orbitRampRatio: 0.55,
+  orbitRampStart: 0.62,
 } as const;
 
 /**
@@ -341,6 +359,16 @@ export const BOX = {
 
   /** Perspektywa sceny. Niższa = mocniejszy efekt 3D, ale i mocniejsze zniekształcenie. */
   perspectivePx: 1400,
+
+  /**
+   * Zaokrąglenie narożników kartonu.
+   *
+   * CELOWO minimalne. Karton ma zagniecione, lekko zmiękczone krawędzie,
+   * ale nie jest zaokrąglonym pudełkiem — przy większym promieniu ściany
+   * przestają się schodzić i między nimi pojawiają się prześwity, bo
+   * to są płaskie prostokąty w przestrzeni 3D, a nie prawdziwa bryła.
+   */
+  cornerRadiusPx: 5,
 } as const;
 
 /**
