@@ -3,6 +3,7 @@ import { SCROLL } from '../config/scene';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { useScrollProgress } from '../hooks/useScrollProgress';
 import { AccessibleHeroContent } from './AccessibleHeroContent';
+import { CssBox } from './box/CssBox';
 import { DevProgress } from './DevProgress';
 import { SceneScaffold } from './SceneScaffold';
 
@@ -33,7 +34,7 @@ export const HeroScroll = (): React.ReactElement => {
    */
   if (reducedMotion) {
     return (
-      <section aria-labelledby="hero-title" className="bg-bg">
+      <section aria-labelledby="hero-title" >
         <AccessibleHeroContent visible />
       </section>
     );
@@ -45,9 +46,11 @@ export const HeroScroll = (): React.ReactElement => {
         ref={sectionRef}
         aria-labelledby="hero-title"
         style={{ height: `${SCROLL.lengthVh}vh` }}
-        className="relative bg-bg"
+        className="relative"
       >
         <div className="sticky top-0 flex h-screen w-full items-center justify-center overflow-hidden">
+          <CssBox scrollRef={scrollRef} />
+
           <SceneScaffold scrollRef={scrollRef} />
 
           {/* Treść dla czytników ekranu i wyszukiwarek — obecna w DOM

@@ -16,17 +16,19 @@
  * z JS w runtime, co kosztowałoby FOUC przy pierwszym renderze.
  */
 @theme {
-  --color-bg: #07070b;
-  --color-magenta: #ff3d81;
-  --color-cyan: #00e5d0;
-  --color-violet: #8b5cf6;
+  --color-bg: #f7f5fb;
+  --color-magenta: #f0246e;
+  --color-cyan: #00b5a3;
+  --color-violet: #7c4dee;
+  --color-ink: #14101f;
+  --color-ink-muted: #5b5470;
 
-  /* Kraft — przyciemniony i zdesaturowany, żeby ciepły materiał nie wypadał
-     z ciemnej, neonowej sceny. Uzasadnienie w config/scene.ts → CARDBOARD. */
-  --color-kraft: #6b4f3a;
-  --color-kraft-light: #8a6949;
-  --color-kraft-dark: #43301f;
-  --color-kraft-interior: #150e08;
+  /* Kraft — jaśniejszy i cieplejszy niż w wersji na ciemnym tle.
+     Uzasadnienie w config/scene.ts → CARDBOARD. */
+  --color-kraft: #c89a6b;
+  --color-kraft-light: #e0bc92;
+  --color-kraft-dark: #9a7048;
+  --color-kraft-interior: #3a2716;
 
   --font-display: 'Cabinet Grotesk', 'Inter Variable', system-ui, sans-serif;
   --font-sans: 'Inter Variable', system-ui, -apple-system, sans-serif;
@@ -38,14 +40,24 @@
        z naszą interpolacją — dwa niezależne wygładzania na tej samej osi
        dają dokładnie ten "gumowy" efekt, który brief wyklucza. */
     scroll-behavior: auto;
-    background-color: var(--color-bg);
-    color-scheme: dark;
+    color-scheme: light;
+    /*
+      ŚWIADOMIE bez background-color na html.
+      Tło sceny (Backdrop) jest elementem `fixed` z ujemnym z-index. Element
+      o ujemnym z-index rysuje się pod tłem najbliższego przodka tworzącego
+      kontekst układania — a korzeń dokumentu taki kontekst tworzy zawsze.
+      Nieprzezroczyste tło na `html` przykryłoby więc całe tło sceny i nie
+      dałoby przy tym żadnego błędu: po prostu byłoby jednolicie szaro.
+
+      Gdy `html` nie ma tła, tło `body` propaguje się na kanwę i jest
+      malowane pod wszystkim — również pod ujemnym z-index. O to chodzi.
+    */
   }
 
   body {
     margin: 0;
     background-color: var(--color-bg);
-    color: #ffffff;
+    color: var(--color-ink);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     /* Blokuje poziome przewijanie od elementów wychodzących poza kadr
@@ -67,9 +79,9 @@
   }
 
   /* Widoczny focus — wymóg dostępności z brief'u. Świadomie NIE polegamy
-     na domyślnym outline przeglądarki: na ciemnym tle bywa niewidoczny. */
+     na domyślnym outline przeglądarki: bywa niewidoczny na kolorowym tle. */
   :focus-visible {
-    outline: 2px solid var(--color-cyan);
+    outline: 2px solid var(--color-violet);
     outline-offset: 3px;
     border-radius: 2px;
   }

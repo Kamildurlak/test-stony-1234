@@ -70,17 +70,17 @@ export const AccessibleHeroContent = ({
         : 'sr-only-content'
     }
   >
-    <p className="mb-5 font-mono text-[11px] tracking-[0.28em] text-cyan uppercase">
+    <p className="mb-5 font-mono text-[11px] tracking-[0.28em] text-violet uppercase">
       Studio treści i automatyzacji
     </p>
 
-    <h1 id="hero-title" className="max-w-3xl text-[clamp(2.5rem,8vw,5.5rem)]">
+    <h1 id="hero-title" className="max-w-3xl text-ink text-[clamp(2.5rem,8vw,5.5rem)]">
       Od pomysłu do viralu.
       <br />
-      <span className="text-white/45">Bez chaosu.</span>
+      <span className="text-ink-muted">Bez chaosu.</span>
     </h1>
 
-    <p className="mt-7 max-w-xl text-base leading-relaxed text-white/60 sm:text-lg">
+    <p className="text-ink-muted mt-7 max-w-xl text-base leading-relaxed sm:text-lg">
       Montaż short-form video, viralowe trendy, strony internetowe, content dla firm i
       automatyzacja AI. Jedna ekipa, jeden proces, jeden termin.
     </p>
@@ -89,7 +89,7 @@ export const AccessibleHeroContent = ({
       {SERVICES.map((service) => (
         <li key={service.title}>
           <h2 className={`text-xl ${service.accent}`}>{service.title}</h2>
-          <p className="mt-2 text-sm leading-relaxed text-white/50">{service.body}</p>
+          <p className="text-ink-muted mt-2 text-sm leading-relaxed">{service.body}</p>
         </li>
       ))}
     </ul>
@@ -97,7 +97,7 @@ export const AccessibleHeroContent = ({
     <div className="mt-14">
       <a
         href="#kontakt"
-        className="inline-flex items-center gap-2 rounded-full bg-white px-7 py-3.5 text-sm font-semibold text-bg transition-colors hover:bg-cyan"
+        className="bg-ink inline-flex items-center gap-2 rounded-full px-7 py-3.5 text-sm font-semibold text-white transition-colors hover:bg-violet"
       >
         Omówmy projekt
         <span aria-hidden="true">→</span>

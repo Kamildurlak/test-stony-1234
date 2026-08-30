@@ -152,6 +152,44 @@ export const BOUNCE = {
 } as const;
 
 /**
+ * Zamach (Faza 1) — pudełko przykuca przed wystrzałem klap.
+ *
+ * Brief: "To jest anticipation: bez niego wybuch czyta się jak błąd."
+ * Dokładnie tak. Oko potrzebuje sygnału, że COŚ ZA CHWILĘ SIĘ STANIE —
+ * bez niego następny kadr jest po prostu inny, a nie wynikający z poprzedniego.
+ */
+export const ANTICIPATION = {
+  /** Przykucnięcie głębsze niż zwykłe lądowanie (0.82) — to musi być wyraźnie więcej. */
+  crouchY: 0.68,
+  crouchX: 1.24,
+  /** Dodatkowe obniżenie bryły przy pełnym przykucnięciu, w jednostkach sceny. */
+  sinkDepth: 0.05,
+} as const;
+
+/**
+ * Geometria pudełka w pikselach bazowych (przed skalowaniem do viewportu).
+ *
+ * Proporcje celowo NIE są sześcianem. Sześcian czyta się jako bryła
+ * geometryczna, a nie jako przedmiot — a chcemy, żeby to wyglądało
+ * na karton, który ktoś mógł trzymać w rękach.
+ */
+export const BOX = {
+  widthPx: 230,
+  heightPx: 186,
+  depthPx: 172,
+
+  /**
+   * Klapy przednia i tylna sięgają połowy głębokości, boczne połowy szerokości —
+   * tak składa się prawdziwy karton klapowy. Minimalna szczelina, żeby przy
+   * zamknięciu klapy nie migotały wzajemnie (z-fighting).
+   */
+  flapGapPx: 2,
+
+  /** Perspektywa sceny. Niższa = mocniejszy efekt 3D, ale i mocniejsze zniekształcenie. */
+  perspectivePx: 1400,
+} as const;
+
+/**
  * Cień. Brief stawia sprawę jasno: "Cień jest obowiązkowy. Bez niego wszystko
  * wygląda jak naklejka."
  *
@@ -178,35 +216,90 @@ export const SHADOW = {
 /* ------------------------------------------------------------------------- */
 
 /**
- * Paleta studia — potwierdzona przez klienta bez zmian.
+ * Paleta studia — wersja jasna.
  *
- * Kolory MAREK (glow ikon) celowo NIE są tutaj. Brief wymaga, żeby były
- * pobrane wprost z plików SVG, nie "mniej więcej podobne" — więc mieszkają
- * przy definicjach logotypów, nie w palecie studia. To rozdzielenie jest
- * świadome: paleta studia = UI, kolory marek = tożsamość ikon.
+ * ZMIANA KIERUNKU względem pierwotnych ustaleń (#07070B). Klient poprosił
+ * o tło "dużo jaśniejsze, wielokolorowe, w klimacie social media".
+ *
+ * Konsekwencja, którą trzeba mieć z tyłu głowy: na jasnym tle NIE DZIAŁA glow.
+ * Poświata to światło dodawane — potrzebuje ciemności, żeby było co dodawać.
+ * Dlatego wszędzie tam, gdzie brief mówi "glow", realizujemy to kolorowym,
+ * miękkim cieniem (patrz GLOW niżej). Efekt jest inny, ale spójny z jasnym
+ * tłem; próba dosłownego glow dałaby brudną, szarą obwódkę.
+ *
+ * Kolory MAREK (ikony) celowo NIE są tutaj — brief wymaga pobrania ich wprost
+ * z plików SVG. Paleta studia = UI, kolory marek = tożsamość ikon.
  */
 export const PALETTE = {
-  bg: '#07070B',
-  magenta: '#FF3D81',
-  cyan: '#00E5D0',
-  violet: '#8B5CF6',
+  /** Baza: ciepła biel z nutą lawendy. Czysta biel byłaby surowa i męcząca. */
+  bg: '#F7F5FB',
+
+  /** Akcenty — te same barwy co wcześniej, przeniesione na jasne tło. */
+  magenta: '#F0246E',
+  cyan: '#00B5A3',
+  violet: '#7C4DEE',
+
+  /** Tekst. Nie czarny — czysta czerń na jasnym tle daje nieprzyjemny kontrast. */
+  ink: '#14101F',
+  inkMuted: '#5B5470',
+} as const;
+
+/**
+ * Plamy koloru w tle.
+ *
+ * Zasada, na której to stoi: DUŻE, MOCNO ROZMYTE, O NISKIM NASYCENIU.
+ * Wielokolorowe tło jest najkrótszą drogą do jarmarku — zwłaszcza gdy przed
+ * nim staną cztery logotypy w barwach marek. Punkty odniesienia z brief'u
+ * (Apple, Linear, Vercel) są niemal monochromatyczne właśnie dlatego.
+ *
+ * Kompromis: kolor jest, ale zachowuje się jak światło odbite od ściany,
+ * a nie jak nadruk. Jeśli okaże się za spokojne, podbijamy `opacity`.
+ */
+export const BACKDROP = {
+  blobs: [
+    { color: '#FF3D81', x: 18, y: 22, size: 58, opacity: 0.4 },
+    { color: '#00E5D0', x: 82, y: 30, size: 52, opacity: 0.34 },
+    { color: '#8B5CF6', x: 62, y: 78, size: 62, opacity: 0.38 },
+    { color: '#FFB020', x: 30, y: 82, size: 46, opacity: 0.26 },
+  ],
+  /**
+   * Bardzo powolny dryf plam. Brief: "Nic nie jest nieruchome."
+   * Okres liczony w dziesiątkach sekund — ruch ma być poniżej progu
+   * świadomej uwagi. Zauważalny dryf tła odciągałby wzrok od pudełka.
+   */
+  driftPeriodS: 46,
+  driftAmplitudePct: 4,
+} as const;
+
+/**
+ * Zamiennik glow na jasnym tle.
+ *
+ * Zamiast dodawać światło, odejmujemy je — kolorowy, mocno rozmyty cień
+ * pod elementem w barwie jego marki. Oko czyta to jako "ten przedmiot
+ * promieniuje kolorem", mimo że technicznie dzieje się coś odwrotnego.
+ */
+export const GLOW = {
+  blurPx: 34,
+  spreadPx: -6,
+  offsetY: 14,
+  opacity: 0.55,
 } as const;
 
 /**
  * Kraft.
  *
- * Klient wybrał surowy brąz przy neonowej palecie na ciemnym tle — to
- * połączenie potrafi wyglądać jak dwa sklejone projekty. Kontra: kraft
- * PRZYCIEMNIONY i zdesaturowany (bliżej espresso niż jasnego kartonu),
- * z kolorowymi kick-lightami z palety łapanymi na krawędziach.
- * Ciepły materiał zostaje, ale nie wypada z ciemnej sceny.
+ * Wraca do jaśniejszego, cieplejszego brązu. Wcześniejsze przyciemnienie
+ * miało jeden cel — uratować ciepły karton na niemal czarnej scenie.
+ * Na jasnym tle problem się odwraca: ciemna bryła byłaby ciężką plamą,
+ * a nie przedmiotem. To jest ten sam surowy karton, o który prosiłeś,
+ * tyle że teraz może być sobą.
  */
 export const CARDBOARD = {
-  base: '#6B4F3A',
-  light: '#8A6949',
-  dark: '#43301F',
-  /** Wnętrze pudełka — celowo bardzo ciemne, żeby ikony miały Z CZEGO się wyłonić. */
-  interior: '#150E08',
+  base: '#C89A6B',
+  light: '#E0BC92',
+  dark: '#9A7048',
+  /** Wnętrze — nadal wyraźnie ciemne, żeby ikony miały Z CZEGO się wyłonić. */
+  interior: '#3A2716',
 } as const;
 
 /* ------------------------------------------------------------------------- */
