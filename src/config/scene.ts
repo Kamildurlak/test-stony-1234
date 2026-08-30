@@ -175,6 +175,76 @@ export const ANTICIPATION = {
 } as const;
 
 /**
+ * Otwarcie klap (Faza 2).
+ *
+ * Brief: "Cztery klapy strzelają w górę, każda na własnym zawiasie (...)
+ * Bardzo szybko — łącznie 7% scrolla. Easing wysokiego rzędu: gwałtowny start,
+ * długie hamowanie."
+ */
+export const FLAPS = {
+  /** Klapa zamknięta leży płasko nad otworem. Patrz komentarz w CssBox. */
+  closedDeg: -90,
+
+  /**
+   * Klapa otwarta przechodzi ZA pion i opada na zewnątrz.
+   * Zatrzymanie dokładnie w pionie wyglądałoby jak zamierzona pozycja
+   * docelowa — a klapa ma zostać wyrzucona, nie ustawiona.
+   */
+  openDeg: -208,
+
+  /**
+   * Opóźnienia startu, jako ułamek fazy OPEN. Kolejność: przód, tył, lewa, prawa.
+   *
+   * Wartości są CELOWO niecałkowitymi wielokrotnościami siebie nawzajem —
+   * brief mówi "nigdy równo", a równe odstępy (0.05, 0.10, 0.15) czytają się
+   * jak sekwencja z pętli for, nie jak cztery rzeczy, które puściły
+   * pod naporem.
+   *
+   * Tył idzie pierwszy, przód drugi: dzięki temu klapa przednia — ta, która
+   * najmocniej zasłania wnętrze — odsłania je, gdy jest już na co patrzeć.
+   */
+  delays: [0.04, 0.0, 0.13, 0.19],
+
+  /** Ułamek fazy zajmowany przez ruch pojedynczej klapy. */
+  duration: 0.78,
+
+  /**
+   * Przestrzelenie kąta. Klapa dolatuje dalej, niż zostaje, i wraca —
+   * bez tego zatrzymanie jest nienaturalnie czyste.
+   */
+  overshootDeg: 22,
+} as const;
+
+/**
+ * Taśma. Pęka PRZED klapami — inaczej wystrzał nie ma przyczyny.
+ */
+export const TAPE_BREAK = {
+  /** Ułamek fazy OPEN, w którym taśma pęka. Musi zdążyć przed pierwszą klapą. */
+  range: [0.0, 0.16] as const,
+  /** Rozejście połówek w px. */
+  partPx: 26,
+  /** Obrót każdej połówki przy zerwaniu — taśma się zwija, nie odsuwa równo. */
+  curlDeg: 14,
+} as const;
+
+/**
+ * Upadek pudełka (Faza 4).
+ *
+ * Brief: "spada w dół z przyspieszeniem grawitacyjnym, obracając się.
+ * Krótko i gwałtownie."
+ */
+export const FALL = {
+  /** Dystans w wysokościach pudełka. Musi wyprowadzić bryłę poza kadr. */
+  distance: 7.2,
+  /** Obrót w osi Z podczas spadania. */
+  rollDeg: 148,
+  /** Dodatkowy przechył w osi X — bryła koziołkuje, nie obraca się płasko. */
+  tumbleDeg: 66,
+  /** Ułamek fazy, od którego bryła zaczyna znikać. */
+  fadeStart: 0.62,
+} as const;
+
+/**
  * Geometria pudełka w pikselach bazowych (przed skalowaniem do viewportu).
  *
  * Proporcje celowo NIE są sześcianem. Sześcian czyta się jako bryła

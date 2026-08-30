@@ -1,5 +1,22 @@
-import { ANTICIPATION, BOUNCE, CONTACT_SHADOW, PHASES, SHADOW } from '../config/scene';
-import { clamp, easeOutCubic, lerp, phaseProgress } from './math';
+import {
+  ANTICIPATION,
+  BOUNCE,
+  CONTACT_SHADOW,
+  FALL,
+  FLAPS,
+  PHASES,
+  SHADOW,
+  TAPE_BREAK,
+} from '../config/scene';
+import {
+  clamp,
+  easeInQuad,
+  easeOutCubic,
+  easeOutQuint,
+  lerp,
+  mapRange,
+  phaseProgress,
+} from './math';
 
 /**
  * Fizyka pudełka — CZYSTA funkcja, bez DOM-u, bez Three.js, bez Reacta.
@@ -27,6 +44,16 @@ export interface BoxState {
   /** Cień kontaktowy — twarda obwódka w punkcie styku, gaśnie po oderwaniu. */
   readonly contactOpacity: number;
   readonly contactBlurPx: number;
+  /** Kąty czterech klap: przód, tył, lewa, prawa. */
+  readonly flapAngles: readonly [number, number, number, number];
+  /** Zerwanie taśmy, 0–1. */
+  readonly tapeBreak: number;
+  /** Upadek: przesunięcie w dół w wysokościach pudełka. */
+  readonly fallY: number;
+  readonly fallRollDeg: number;
+  readonly fallTumbleDeg: number;
+  /** Krycie całej bryły — gaśnie dopiero pod koniec upadku. */
+  readonly opacity: number;
 }
 
 /**
@@ -151,15 +178,94 @@ export const computeBoxState = (elapsedS: number, progress: number): BoxState =>
     CONTACT_SHADOW.opacityGround * Math.pow(1 - heightRatio, CONTACT_SHADOW.falloffExponent);
   const contactBlurPx = lerp(CONTACT_SHADOW.blurGroundPx, CONTACT_SHADOW.blurApexPx, heightRatio);
 
+  /* --- FAZA 2: WYSTRZAŁ KLAP --- */
+  const openT = phaseProgress(progress, PHASES.OPEN);
+
+  /**
+   * Każda klapa dostaje własne okno czasowe wewnątrz fazy OPEN.
+   *
+   * To jest realizacja zasady "nigdy równo" na najniższym poziomie: klapy nie
+   * dzielą jednej krzywej z przesunięciem, tylko każda ma własny, niezależnie
+   * przeliczany postęp. Dzięki temu w dowolnym momencie fazy cztery klapy są
+   * w czterech różnych miejscach swojego ruchu — a to jest różnica między
+   * "coś eksplodowało" a "odtworzyła się animacja".
+   */
+  const flapAngle = (delay: number): number => {
+    const localT = clamp(mapRange(openT, delay, delay + FLAPS.duration, 0, 1));
+
+    /**
+     * easeOutQuint: piąta potęga. Bardzo gwałtowny start, bardzo długie
+     * hamowanie — dokładnie to, czego wymaga brief. Klapa dostaje impuls,
+     * a potem tylko wytraca energię; nie ma tu żadnego "rozpędzania się",
+     * bo nic jej nie popycha po drodze.
+     */
+    const eased = easeOutQuint(localT);
+
+    /**
+     * Przestrzelenie zanika osobną, szybszą krzywą. Gdyby wchodziło w ten sam
+     * easing, przestrzelenie byłoby największe na końcu ruchu — czyli tam,
+     * gdzie klapa już się zatrzymuje. Realnie jest odwrotnie: nadmiar bierze
+     * się z bezwładności w trakcie lotu i zdąża wygasnąć przed zatrzymaniem.
+     */
+    const overshoot = Math.sin(localT * Math.PI) * FLAPS.overshootDeg * (1 - localT * 0.55);
+
+    return lerp(FLAPS.closedDeg, FLAPS.openDeg, eased) - overshoot;
+  };
+
+  const flapAngles = [
+    flapAngle(FLAPS.delays[0]),
+    flapAngle(FLAPS.delays[1]),
+    flapAngle(FLAPS.delays[2]),
+    flapAngle(FLAPS.delays[3]),
+  ] as const;
+
+  const tapeBreak = clamp(mapRange(openT, TAPE_BREAK.range[0], TAPE_BREAK.range[1], 0, 1));
+
+  /* --- FAZA 4: UPADEK --- */
+  const fallT = phaseProgress(progress, PHASES.FALL);
+
+  /**
+   * Spadek jest KWADRATOWY, bo tak działa swobodne opadanie.
+   *
+   * Oko rozpoznaje przyspieszenie ziemskie bez trudu — to jedyny ruch,
+   * który każdy widział miliony razy. Liniowe opadanie natychmiast czyta się
+   * jako "obiekt jest opuszczany", a nie "obiekt spada".
+   */
+  const fallY = easeInQuad(fallT) * FALL.distance;
+
+  /**
+   * Obrót NIE przyspiesza razem ze spadkiem. Moment obrotowy pudełko dostaje
+   * raz, przy oderwaniu, i dalej kręci się mniej więcej równo — bo grawitacja
+   * działa na środek masy i nie dokłada obrotu. Wiązanie obrotu z tą samą
+   * krzywą co spadek to częsty skrót, który wygląda jak wciągnięcie
+   * przedmiotu w wir.
+   */
+  const fallRollDeg = fallT * FALL.rollDeg;
+  const fallTumbleDeg = fallT * FALL.tumbleDeg;
+
+  const opacity = 1 - clamp(mapRange(fallT, FALL.fadeStart, 1, 0, 1));
+
   return {
     y: height,
     scaleX,
     scaleY,
     yawDeg,
     shadowScale,
-    shadowOpacity,
+    shadowOpacity: shadowOpacity * (1 - clamp(fallT * 2)),
     shadowBlurPx,
-    contactOpacity,
+    /**
+     * Cienie gasną razem z odlotem bryły. Cień przedmiotu, który wypadł
+     * z kadru, nie ma prawa zostać na podłodze — a przy szybkim upadku
+     * to jedna z tych rzeczy, które łatwo przeoczyć w kodzie i natychmiast
+     * widać na ekranie.
+     */
+    contactOpacity: contactOpacity * (1 - clamp(fallT * 3)),
     contactBlurPx,
+    flapAngles,
+    tapeBreak,
+    fallY,
+    fallRollDeg,
+    fallTumbleDeg,
+    opacity,
   };
 };

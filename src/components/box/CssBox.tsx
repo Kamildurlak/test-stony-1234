@@ -1,11 +1,11 @@
 import { useRef, type CSSProperties, type RefObject } from 'react';
-import { BOUNCE, BOX, CARDBOARD, CONTACT_SHADOW } from '../../config/scene';
+import { BOUNCE, BOX, CARDBOARD, CONTACT_SHADOW, FLAPS, TAPE_BREAK } from '../../config/scene';
 import { computeBoxState } from '../../lib/boxPhysics';
 import { round } from '../../lib/math';
 import { TICK_PRIORITY } from '../../lib/ticker';
 import { useTicker } from '../../hooks/useTicker';
 import type { ScrollState } from '../../hooks/useScrollProgress';
-import { cardboardSurface, CORRUGATION, TAPE } from './cardboard';
+import { cardboardSurface, CORRUGATION, TAPE_BOTTOM_HALF, TAPE_TOP_HALF } from './cardboard';
 
 /**
  * Pudełko zbudowane w CSS 3D.
@@ -19,16 +19,6 @@ import { cardboardSurface, CORRUGATION, TAPE } from './cardboard';
 const HALF_W = BOX.widthPx / 2;
 const HALF_H = BOX.heightPx / 2;
 const HALF_D = BOX.depthPx / 2;
-
-/**
- * Kąty klapy, liczone wokół osi zawiasu.
- *
- * Układ odniesienia: przy 0° panel zwisa w dół wzdłuż ściany. W CSS dodatni
- * `rotateX` odchyla dolną krawędź KU WIDZOWI, więc żeby klapa położyła się
- * płasko NAD otworem (do środka), potrzebny jest kąt ujemny. Otwarcie
- * w Etapie 3 pojedzie dalej w tę samą stronę, aż za pion.
- */
-const FLAP_CLOSED_DEG = -90;
 
 /** Udawana grubość tektury. Widoczna na cięciach klap. */
 const BOARD_THICKNESS_PX = 3.5;
@@ -81,6 +71,8 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
   const boxRef = useRef<HTMLDivElement>(null);
   const softShadowRef = useRef<HTMLDivElement>(null);
   const contactShadowRef = useRef<HTMLDivElement>(null);
+  const flapRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const tapeRefs = useRef<Array<HTMLDivElement | null>>([]);
 
   useTicker((_deltaS, elapsedS) => {
     const { smooth } = scrollRef.current;
@@ -93,13 +85,46 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
        * skalowanie (squash). Gdyby skalowanie szło przed obrotem, zgniecenie
        * odbywałoby się w obróconym układzie i pudełko ścinałoby się na skos
        * zamiast spłaszczać do podłoża.
+       *
+       * Upadek dokłada się PRZED obrotami spoczynkowymi: przesunięcie w dół
+       * ma się odbywać w układzie ekranu, a koziołkowanie nakładać na skos
+       * bryły, nie zastępować go.
        */
+      const totalY = -state.y * BOX.heightPx + state.fallY * BOX.heightPx;
+
       boxRef.current.style.transform = [
-        `translate3d(0, ${round(-state.y * BOX.heightPx)}px, 0)`,
-        `rotateX(${BOUNCE.restTiltXDeg}deg)`,
+        `translate3d(0, ${round(totalY)}px, 0)`,
+        `rotateZ(${round(state.fallRollDeg, 2)}deg)`,
+        `rotateX(${round(BOUNCE.restTiltXDeg + state.fallTumbleDeg, 2)}deg)`,
         `rotateY(${round(BOUNCE.restTiltYDeg + state.yawDeg)}deg)`,
         `scale3d(${round(state.scaleX, 4)}, ${round(state.scaleY, 4)}, ${round(state.scaleX, 4)})`,
       ].join(' ');
+      boxRef.current.style.opacity = `${round(state.opacity, 3)}`;
+    }
+
+    // Każda klapa dostaje własny kąt — to jedyna rzecz, jaką animujemy
+    // na klapie, bo cała reszta jej geometrii jest statyczna.
+    for (let i = 0; i < 4; i += 1) {
+      const node = flapRefs.current[i];
+      const angle = state.flapAngles[i];
+      if (!node || angle === undefined) continue;
+      node.style.transform = `rotateX(${round(angle, 2)}deg)`;
+    }
+
+    /**
+     * Taśma pęka i rozchodzi się na boki, każda połówka w swoją stronę
+     * i z lekkim skręceniem. Zaraz potem gaśnie — nie dlatego, że taśma
+     * znika, tylko dlatego, że przy tej prędkości i tak przestaje być
+     * czytelna, a jej ślad na otwartych klapach dodawałby wyłącznie bałaganu.
+     */
+    for (let i = 0; i < 2; i += 1) {
+      const node = tapeRefs.current[i];
+      if (!node) continue;
+      const direction = i === 0 ? -1 : 1;
+      const offset = state.tapeBreak * TAPE_BREAK.partPx * direction;
+      const curl = state.tapeBreak * TAPE_BREAK.curlDeg * direction;
+      node.style.transform = `translate3d(0, ${round(offset)}px, 0) rotateZ(${round(curl, 2)}deg)`;
+      node.style.opacity = `${round(1 - state.tapeBreak * 0.85, 3)}`;
     }
 
     if (softShadowRef.current) {
@@ -260,18 +285,52 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
           }}
         />
 
-        {/* Wnętrze — ciemna płaszczyzna tuż nad dnem.
+        {/* --- WNĘTRZE ---
             Brief: "Wnętrze pudełka jest ciemne, żeby to, co z niego wychodzi,
             miało z czego się wyłonić." Bez tego ikony w Etapie 4 pojawiałyby
-            się na tle podłogi, a nie wychodziły z mroku. */}
+            się na tle podłogi, a nie wychodziły z mroku.
+
+            Wnętrze wymaga WŁASNYCH ścianek i nie da się tego obejść. Ściany
+            zewnętrzne mają `backface-visibility: hidden`, więc oglądane od
+            środka są po prostu niewidoczne — po otwarciu klap przez otwór
+            widać było tło strony. Jeden element nie może mieć dwóch różnych
+            powierzchni, więc każda ściana potrzebuje ciemnego bliźniaka
+            odwróconego do wewnątrz. */}
+        <InnerWall
+          width={BOX.widthPx}
+          height={BOX.heightPx}
+          transform={`translateZ(${HALF_D - 1}px) rotateY(180deg)`}
+          shade={0.55}
+        />
+        <InnerWall
+          width={BOX.widthPx}
+          height={BOX.heightPx}
+          transform={`rotateY(180deg) translateZ(${HALF_D - 1}px) rotateY(180deg)`}
+          shade={0.9}
+        />
+        <InnerWall
+          width={BOX.depthPx}
+          height={BOX.heightPx}
+          transform={`rotateY(90deg) translateZ(${HALF_W - 1}px) rotateY(180deg)`}
+          shade={0.75}
+        />
+        <InnerWall
+          width={BOX.depthPx}
+          height={BOX.heightPx}
+          transform={`rotateY(-90deg) translateZ(${HALF_W - 1}px) rotateY(180deg)`}
+          shade={0.68}
+        />
+
+        {/* Dno widziane od środka — najciemniejszy punkt sceny. */}
         <div
           style={{
             ...faceBase,
-            width: `${BOX.widthPx - 6}px`,
-            height: `${BOX.depthPx - 6}px`,
-            transform: `translate(-50%, -50%) rotateX(90deg) translateZ(${HALF_H - 10}px)`,
-            background: `radial-gradient(ellipse at center, ${CARDBOARD.interior} 0%, #120B04 88%)`,
-            boxShadow: 'inset 0 0 40px 12px rgba(0,0,0,0.85)',
+            width: `${BOX.widthPx - 2}px`,
+            height: `${BOX.depthPx - 2}px`,
+            backfaceVisibility: 'visible',
+            transform: `translate(-50%, -50%) rotateX(90deg) translateZ(${-(HALF_H - 1)}px)`,
+            background: `radial-gradient(ellipse at 50% 35%, #241606 0%, #0B0602 90%)`,
+            boxShadow: 'inset 0 0 46px 14px rgba(0,0,0,0.9)',
           }}
         />
 
@@ -280,27 +339,77 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
             kartonie klapy się zachodzą; tutaj chodzi dodatkowo o to, żeby
             cztery współpłaszczyznowe prostokąty nie walczyły o pierwszeństwo
             w buforze głębi (z-fighting), co daje migotanie przy obrocie. */}
-        <Flap baseRotateY={0} offset={HALF_D} width={BOX.widthPx} depth={HALF_D} sink={0} />
-        <Flap baseRotateY={180} offset={HALF_D} width={BOX.widthPx} depth={HALF_D} sink={0} />
-        <Flap baseRotateY={-90} offset={HALF_W} width={BOX.depthPx} depth={HALF_W} sink={1.5} />
-        <Flap baseRotateY={90} offset={HALF_W} width={BOX.depthPx} depth={HALF_W} sink={1.5} />
-
-        {/* Taśma pakowa wzdłuż szwu, na styku klap przedniej i tylnej.
-            Leży nad klapami, więc musi być za nimi w kolejności rysowania. */}
-        <div
-          style={{
-            position: 'absolute',
-            left: '50%',
-            top: '50%',
-            width: `${BOX.widthPx * 0.34}px`,
-            height: `${BOX.depthPx + 16}px`,
-            transformOrigin: 'center',
-            // rotateX(90) kładzie płaszczyznę na GÓRZE bryły; rotateX(-90)
-            // umieściłaby ją na spodzie, czyli tam, gdzie taśmy nikt nie zobaczy.
-            transform: `translate(-50%, -50%) rotateX(90deg) translateZ(${HALF_H + 1.2}px)`,
-            ...TAPE,
-          }}
+        {/* Kolejność musi odpowiadać FLAPS.delays: przód, tył, lewa, prawa. */}
+        <Flap
+          index={0}
+          flapRefs={flapRefs}
+          baseRotateY={0}
+          offset={HALF_D}
+          width={BOX.widthPx}
+          depth={HALF_D}
+          sink={0}
         />
+        <Flap
+          index={1}
+          flapRefs={flapRefs}
+          baseRotateY={180}
+          offset={HALF_D}
+          width={BOX.widthPx}
+          depth={HALF_D}
+          sink={0}
+        />
+        <Flap
+          index={2}
+          flapRefs={flapRefs}
+          baseRotateY={-90}
+          offset={HALF_W}
+          width={BOX.depthPx}
+          depth={HALF_W}
+          sink={1.5}
+        />
+        <Flap
+          index={3}
+          flapRefs={flapRefs}
+          baseRotateY={90}
+          offset={HALF_W}
+          width={BOX.depthPx}
+          depth={HALF_W}
+          sink={1.5}
+        />
+
+        {/* Taśma pakowa wzdłuż szwu — DWIE połówki, żeby mogła pęknąć.
+            Leży nad klapami, więc musi być za nimi w kolejności rysowania. */}
+        {[0, 1].map((half) => (
+          <div
+            key={half}
+            style={{
+              position: 'absolute',
+              left: '50%',
+              top: '50%',
+              width: `${BOX.widthPx * 0.34}px`,
+              height: `${(BOX.depthPx + 16) / 2}px`,
+              // rotateX(90) kładzie płaszczyznę na GÓRZE bryły; rotateX(-90)
+              // umieściłaby ją na spodzie, czyli tam, gdzie taśmy nikt nie zobaczy.
+              transform: `translate(-50%, ${half === 0 ? '-100%' : '0'}) rotateX(90deg) translateZ(${HALF_H + 1.2}px)`,
+              transformStyle: 'preserve-3d',
+            }}
+          >
+            {/* Postrzępiona krawędź na linii pęknięcia. Taśma nie tnie się
+                równo — rozrywa się wzdłuż włókien folii, zostawiając ząbki.
+                Prosta krawędź czytałaby się jak cięcie nożem, czyli jako
+                czynność celowa, a nie jak coś, co puściło pod naporem.
+
+                Kształt siedzi w obrazku tła, nie w `clip-path` — powód
+                w komentarzu przy tapeHalf() w cardboard.ts. */}
+            <div
+              ref={(node) => {
+                tapeRefs.current[half] = node;
+              }}
+              className="h-full w-full will-change-transform"
+              style={half === 0 ? TAPE_TOP_HALF : TAPE_BOTTOM_HALF}
+            />
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -308,7 +417,50 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
 
 /* ------------------------------------------------------------------------- */
 
+interface InnerWallProps {
+  readonly width: number;
+  readonly height: number;
+  readonly transform: string;
+  /** 0 = jasno, 1 = zupełny mrok. Ściany dalsze od otworu są ciemniejsze. */
+  readonly shade: number;
+}
+
+/**
+ * Ścianka wnętrza.
+ *
+ * Każda ma inną jasność, i to nie jest ozdobnik: światło wpada do pudełka
+ * wyłącznie przez otwór u góry, więc ściana zwrócona ku niemu łapie go
+ * najwięcej, a przeciwległa prawie wcale. Jednolicie czarne wnętrze wygląda
+ * jak dziura wycięta w obrazku, a nie jak przestrzeń.
+ *
+ * Gradient pionowy dokłada drugą połowę efektu: przy krawędzi otworu jaśniej,
+ * ku dnu coraz ciemniej.
+ */
+const InnerWall = ({ width, height, transform, shade }: InnerWallProps): React.ReactElement => (
+  <div
+    style={{
+      position: 'absolute',
+      left: '50%',
+      top: '50%',
+      width: `${width}px`,
+      height: `${height}px`,
+      backfaceVisibility: 'hidden',
+      transform: `translate(-50%, -50%) ${transform}`,
+      background: `linear-gradient(180deg,
+        rgba(74,48,22,${1 - shade * 0.55}) 0%,
+        rgba(40,25,10,${1 - shade * 0.72}) 38%,
+        rgba(12,7,2,${0.92 + shade * 0.08}) 100%)`,
+      backgroundColor: '#150D04',
+    }}
+  />
+);
+
+/* ------------------------------------------------------------------------- */
+
 interface FlapProps {
+  /** Pozycja w tablicy kątów z fizyki. Kolejność: przód, tył, lewa, prawa. */
+  readonly index: number;
+  readonly flapRefs: RefObject<Array<HTMLDivElement | null>>;
   /** Obrót ustawiający klapę na właściwej krawędzi górnej. */
   readonly baseRotateY: number;
   /** Odległość zawiasu od środka bryły. */
@@ -330,7 +482,15 @@ interface FlapProps {
  *
  * W Etapie 3 wystarczy animować jedną liczbę na klapę.
  */
-const Flap = ({ baseRotateY, offset, width, depth, sink }: FlapProps): React.ReactElement => (
+const Flap = ({
+  index,
+  flapRefs,
+  baseRotateY,
+  offset,
+  width,
+  depth,
+  sink,
+}: FlapProps): React.ReactElement => (
   <div
     style={{
       position: 'absolute',
@@ -343,6 +503,10 @@ const Flap = ({ baseRotateY, offset, width, depth, sink }: FlapProps): React.Rea
     }}
   >
     <div
+      ref={(node) => {
+        flapRefs.current[index] = node;
+      }}
+      className="will-change-transform"
       style={{
         position: 'absolute',
         left: `${-width / 2}px`,
@@ -350,7 +514,7 @@ const Flap = ({ baseRotateY, offset, width, depth, sink }: FlapProps): React.Rea
         width: `${width}px`,
         height: `${depth - BOX.flapGapPx}px`,
         transformOrigin: '50% 0',
-        transform: `rotateX(${FLAP_CLOSED_DEG}deg)`,
+        transform: `rotateX(${FLAPS.closedDeg}deg)`,
         transformStyle: 'preserve-3d',
         ...cardboardSurface({
           gradient: `linear-gradient(180deg, ${CARDBOARD.light} 0%, ${CARDBOARD.base} 62%, ${CARDBOARD.dark} 100%)`,
