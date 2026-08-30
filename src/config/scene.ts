@@ -146,8 +146,16 @@ export const BOUNCE = {
   yawPeriodS: 5.3,
   yawAmplitudeDeg: 7,
 
-  /** Stały skos bryły — żeby pudełko czytało się jako obiekt 3D, a nie prostokąt. */
-  restTiltXDeg: -8,
+  /**
+   * Stały skos bryły — żeby pudełko czytało się jako obiekt 3D, a nie prostokąt.
+   *
+   * Skos w osi X podniesiony z -8° do -14°: przy płytszym kącie górna
+   * płaszczyzna była praktycznie niewidoczna, a to na niej siedzą detale
+   * decydujące o wiarygodności materiału — taśma, szew i cięte krawędzie klap.
+   * Zbudowanie ich i pokazanie pod kątem, pod którym ich nie widać, byłoby
+   * pracą wyrzuconą.
+   */
+  restTiltXDeg: -14,
   restTiltYDeg: 14,
 } as const;
 
@@ -209,6 +217,33 @@ export const SHADOW = {
   /** Rozmycie w px przy podłożu i na szczycie. */
   blurGroundPx: 18,
   blurApexPx: 44,
+} as const;
+
+/**
+ * Cień kontaktowy — druga, twardsza warstwa cienia.
+ *
+ * Prawdziwy cień nie jest jedną plamą, tylko złożeniem dwóch zjawisk:
+ * miękkiego cienia od światła rozproszonego (duży, blady, zawsze rozmyty)
+ * oraz cienia kontaktowego — wąskiej, ciemnej i OSTREJ obwódki dokładnie
+ * tam, gdzie przedmiot dotyka podłoża, bo w tę szczelinę nie wpada już
+ * żadne światło.
+ *
+ * Jedna uśredniona plama zawsze wygląda jak naklejona pod spodem. Dopiero
+ * ta druga warstwa przykleja przedmiot do podłogi — i znika, gdy tylko
+ * przedmiot się oderwie. To dlatego jej krycie spada do zera znacznie
+ * szybciej niż krycie cienia miękkiego.
+ */
+export const CONTACT_SHADOW = {
+  /** Szerokość względem cienia miękkiego — wyraźnie węższy. */
+  widthRatio: 1.02,
+  opacityGround: 0.62,
+  blurGroundPx: 5,
+  blurApexPx: 16,
+  /**
+   * Wykładnik zaniku. Powyżej 1 krycie spada gwałtownie już przy pierwszych
+   * milimetrach oderwania — dokładnie tak, jak zachowuje się realny kontakt.
+   */
+  falloffExponent: 2.6,
 } as const;
 
 /* ------------------------------------------------------------------------- */

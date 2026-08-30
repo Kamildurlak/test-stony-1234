@@ -1,4 +1,4 @@
-import { ANTICIPATION, BOUNCE, PHASES, SHADOW } from '../config/scene';
+import { ANTICIPATION, BOUNCE, CONTACT_SHADOW, PHASES, SHADOW } from '../config/scene';
 import { clamp, easeOutCubic, lerp, phaseProgress } from './math';
 
 /**
@@ -24,6 +24,9 @@ export interface BoxState {
   readonly shadowScale: number;
   readonly shadowOpacity: number;
   readonly shadowBlurPx: number;
+  /** Cień kontaktowy — twarda obwódka w punkcie styku, gaśnie po oderwaniu. */
+  readonly contactOpacity: number;
+  readonly contactBlurPx: number;
 }
 
 /**
@@ -134,5 +137,29 @@ export const computeBoxState = (elapsedS: number, progress: number): BoxState =>
   const shadowOpacity = lerp(SHADOW.opacityGround, SHADOW.opacityApex, heightRatio);
   const shadowBlurPx = lerp(SHADOW.blurGroundPx, SHADOW.blurApexPx, heightRatio);
 
-  return { y: height, scaleX, scaleY, yawDeg, shadowScale, shadowOpacity, shadowBlurPx };
+  /**
+   * Cień kontaktowy gaśnie WYKŁADNICZO, nie liniowo.
+   *
+   * Ta różnica jest tu całym sednem: szczelina bez światła istnieje tylko
+   * w bezpośrednim styku. Wystarczy, że przedmiot uniesie się odrobinę,
+   * a światło rozproszone wpada pod spód i twarda obwódka znika. Liniowe
+   * wygaszanie zostawiałoby ciemną plamkę pod pudełkiem wiszącym u szczytu —
+   * i to jest jeden z tych detali, których nikt nie nazwie, ale każdy odbierze
+   * jako "coś tu jest nie tak".
+   */
+  const contactOpacity =
+    CONTACT_SHADOW.opacityGround * Math.pow(1 - heightRatio, CONTACT_SHADOW.falloffExponent);
+  const contactBlurPx = lerp(CONTACT_SHADOW.blurGroundPx, CONTACT_SHADOW.blurApexPx, heightRatio);
+
+  return {
+    y: height,
+    scaleX,
+    scaleY,
+    yawDeg,
+    shadowScale,
+    shadowOpacity,
+    shadowBlurPx,
+    contactOpacity,
+    contactBlurPx,
+  };
 };
