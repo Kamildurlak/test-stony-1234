@@ -1,0 +1,93 @@
+/* Inter — self-hostowany wariant zmienny. Jeden plik obsługuje całą oś grubości,
+   więc zamiast czterech osobnych plików WOFF2 pobieramy jeden. */
+@import '@fontsource-variable/inter';
+@import 'tailwindcss';
+
+/**
+ * Tokeny projektu.
+ *
+ * Tailwind v4 czyta zmienne z @theme i generuje z nich klasy narzędziowe —
+ * dzięki temu `bg-bg` czy `text-magenta` działają, a jednocześnie te same
+ * wartości są dostępne jako zwykłe custom properties dla kodu animacji.
+ * Jedno źródło prawdy dla CSS i dla JS.
+ *
+ * Wartości muszą pozostać zsynchronizowane z src/config/scene.ts (PALETTE,
+ * CARDBOARD). Duplikacja jest tu świadoma: alternatywą byłoby generowanie CSS
+ * z JS w runtime, co kosztowałoby FOUC przy pierwszym renderze.
+ */
+@theme {
+  --color-bg: #07070b;
+  --color-magenta: #ff3d81;
+  --color-cyan: #00e5d0;
+  --color-violet: #8b5cf6;
+
+  /* Kraft — przyciemniony i zdesaturowany, żeby ciepły materiał nie wypadał
+     z ciemnej, neonowej sceny. Uzasadnienie w config/scene.ts → CARDBOARD. */
+  --color-kraft: #6b4f3a;
+  --color-kraft-light: #8a6949;
+  --color-kraft-dark: #43301f;
+  --color-kraft-interior: #150e08;
+
+  --font-display: 'Cabinet Grotesk', 'Inter Variable', system-ui, sans-serif;
+  --font-sans: 'Inter Variable', system-ui, -apple-system, sans-serif;
+}
+
+@layer base {
+  html {
+    /* Wygładzanie robimy sami, w pętli rAF. Natywny smooth scroll walczyłby
+       z naszą interpolacją — dwa niezależne wygładzania na tej samej osi
+       dają dokładnie ten "gumowy" efekt, który brief wyklucza. */
+    scroll-behavior: auto;
+    background-color: var(--color-bg);
+    color-scheme: dark;
+  }
+
+  body {
+    margin: 0;
+    background-color: var(--color-bg);
+    color: #ffffff;
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    /* Blokuje poziome przewijanie od elementów wychodzących poza kadr
+       (klapy, pudełko w locie) bez użycia overflow:hidden, które zerwałoby
+       position: sticky. */
+    overflow-x: clip;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    font-weight: 800;
+    /* Duże nagłówki domyślnie mają za luźny trakt — ściągamy go, żeby
+       czytały się jako blok, a nie jako lista linii. */
+    letter-spacing: -0.03em;
+    line-height: 0.95;
+    text-wrap: balance;
+  }
+
+  /* Widoczny focus — wymóg dostępności z brief'u. Świadomie NIE polegamy
+     na domyślnym outline przeglądarki: na ciemnym tle bywa niewidoczny. */
+  :focus-visible {
+    outline: 2px solid var(--color-cyan);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+}
+
+@layer utilities {
+  /* Treść dostępna dla czytników ekranu, niewidoczna wizualnie.
+     Brief: "treść czytelna dla wyszukiwarek i czytników ekranu
+     niezależnie od animacji". */
+  .sr-only-content {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border-width: 0;
+  }
+}

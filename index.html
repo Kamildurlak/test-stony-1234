@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#07070B" />
+    <title>Od pomysłu do viralu. Bez chaosu.</title>
+    <meta
+      name="description"
+      content="Montaż short-form video, strony internetowe, wyszukiwanie viralowych trendów, content dla firm i automatyzacja AI. Jedna ekipa, jeden proces."
+    />
+
+    <!--
+      Preconnect do CDN fontów. Bez tego przeglądarka odkrywa ten host dopiero
+      po sparsowaniu arkusza, co dokłada pełny handshake TLS do ścieżki
+      krytycznej renderowania.
+
+      DO ZROBIENIA (Etap 6 — polerka): przenieść fonty na self-hosting.
+      Trzecia strona w ścieżce krytycznej to zawsze kilka punktów Lighthouse
+      i jeden punkt awarii, nad którym nie mamy kontroli.
+    -->
+    <link rel="preconnect" href="https://api.fontshare.com" />
+    <link rel="preconnect" href="https://cdn.fontshare.com" crossorigin />
+    <link
+      href="https://api.fontshare.com/v2/css?f[]=cabinet-grotesk@800,700&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
