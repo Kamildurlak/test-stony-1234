@@ -3,6 +3,7 @@ import { SCROLL } from '../config/scene';
 import { useReducedMotion } from '../hooks/useReducedMotion';
 import { useScrollProgress } from '../hooks/useScrollProgress';
 import { AccessibleHeroContent } from './AccessibleHeroContent';
+import { BrandIcons } from './icons/BrandIcons';
 import { CssBox } from './box/CssBox';
 import { DevProgress } from './DevProgress';
 import { SceneScaffold } from './SceneScaffold';
@@ -49,6 +50,15 @@ export const HeroScroll = (): React.ReactElement => {
         className="relative"
       >
         <div className="sticky top-0 flex h-screen w-full items-center justify-center overflow-hidden">
+          {/*
+            KOLEJNOŚĆ TYCH DWÓCH LINIJEK JEST CZĘŚCIĄ EFEKTU, NIE STYLEM.
+
+            Ikony muszą leżeć POD pudełkiem w kolejności rysowania, żeby
+            przednia ściana kartonu zasłaniała je, dopóki są w środku.
+            Zamiana miejscami sprawia, że ikony pojawiają się przed pudełkiem
+            i cała iluzja wylatywania z wnętrza przestaje działać.
+          */}
+          <BrandIcons scrollRef={scrollRef} />
           <CssBox scrollRef={scrollRef} />
 
           <SceneScaffold scrollRef={scrollRef} />

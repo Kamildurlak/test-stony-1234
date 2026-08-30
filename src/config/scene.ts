@@ -228,6 +228,68 @@ export const TAPE_BREAK = {
 } as const;
 
 /**
+ * Wylot ikon (Faza 3).
+ *
+ * Brief: "Cztery logotypy wylatują z wnętrza pudełka, nie znikąd."
+ * To zdanie niesie cały ciężar tej fazy — jeśli ikony pojawią się PRZED
+ * kartonem albo obok niego, efekt jest zepsuty niezależnie od tego,
+ * jak ładnie potem lecą.
+ */
+export const ICONS = {
+  /**
+   * Opóźnienia startu jako ułamek fazy ICONS. Kolejność zgodna z LOGOS:
+   * TikTok, Instagram, YouTube, Facebook.
+   *
+   * Znów: wartości celowo nierówne i nie w kolejności indeksów. Ikony mają
+   * wysypać się z pudełka, a nie wyjechać z niego w kolejce.
+   */
+  delays: [0.0, 0.11, 0.05, 0.17],
+
+  /** Ułamek fazy na przelot jednej ikony — z zapasem na przestrzelenie. */
+  duration: 0.66,
+
+  /**
+   * Pozycje docelowe w formacji, jako ułamek promienia bazowego.
+   * Cztery narożniki, bo w środku ląduje treść scen 5–8.
+   */
+  targets: [
+    [-0.92, -0.62],
+    [0.92, -0.62],
+    [-0.92, 0.62],
+    [0.92, 0.62],
+  ] as const,
+
+  /** Promień formacji w px (przed skalowaniem responsywnym). */
+  radiusPx: 250,
+
+  /** Skala startowa w gardzieli pudełka. Mała = wrażenie głębi. */
+  startScale: 0.2,
+
+  /**
+   * Wysokość łuku lotu jako wielokrotność promienia formacji.
+   * Brief: "najpierw w górę, potem rozejście na boki — nie po linii prostej".
+   */
+  arcHeight: 1.35,
+
+  /** Obrót w locie, stopnie. Każda ikona inny — i w różne strony. */
+  spinDeg: [420, -300, 340, -480],
+
+  /**
+   * Ruch własny po osadzeniu. Okresy dobrane tak, żeby nie miały wspólnej
+   * wielokrotności — cztery ikony nigdy nie wracają do tej samej konfiguracji.
+   */
+  idleSpinPeriodS: [11.3, 14.7, 9.1, 17.2],
+
+  /**
+   * Amplituda wahadła wokół osi pionowej, w stopniach.
+   * NIE pełny obrót — uzasadnienie w lib/iconPhysics.ts.
+   */
+  idleSwingDeg: 16,
+  idleBobPeriodS: [3.1, 4.3, 2.6, 3.7],
+  idleBobPx: 9,
+} as const;
+
+/**
  * Upadek pudełka (Faza 4).
  *
  * Brief: "spada w dół z przyspieszeniem grawitacyjnym, obracając się.

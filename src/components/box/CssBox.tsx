@@ -571,8 +571,11 @@ const BoxPrint = (): React.ReactElement => (
         W trybie mnożenia czerń wyszłaby zupełnie płaska i zabiłaby fakturę
         podłoża — a o zachowanie faktury w tym trybie właśnie chodzi. */}
     <span
-      className="font-display text-[30px] leading-none font-extrabold"
-      style={{ color: '#7A5334', letterSpacing: '0.02em' }}
+      className="font-display text-[26px] leading-none font-extrabold whitespace-nowrap"
+      // Rozmiar dobrany tak, żeby napis mieścił się na ścianie także w krojach
+      // szerszych od docelowego — nadruk wychodzący poza karton natychmiast
+      // zdradza, że to warstwa tekstu, a nie farba na powierzchni.
+      style={{ color: '#7A5334', letterSpacing: '0.01em' }}
     >
       OTWÓRZ MNIE
     </span>
