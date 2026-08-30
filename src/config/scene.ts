@@ -77,7 +77,7 @@ export const PHASES = {
   OPEN: [0.05, 0.08],
 
   /** Wylot ikon: najpierw pionowo w górę, potem rozejście po okręgu. */
-  ICONS: [0.07, 0.22],
+  ICONS: [0.07, 0.15],
 
   /**
    * Upadek pudełka. Startuje DOKŁADNIE tam, gdzie ikony, i trwa trzy razy
@@ -91,7 +91,7 @@ export const PHASES = {
   FALL: [0.07, 0.105],
 
   /** Scena 1: "Idealny montaż" — wchodzi, gdy formacja rusza po okręgu. */
-  SCENE_EDIT: [0.2, 0.42],
+  SCENE_EDIT: [0.15, 0.42],
 
   /** Scena 2: "Viralowe treści" — licznik wyświetleń + krzywa wzrostu. */
   SCENE_VIRAL: [0.46, 0.66],
@@ -252,83 +252,55 @@ export const ICONS = {
    * Opóźnienia startu jako ułamek fazy ICONS. Kolejność zgodna z LOGOS:
    * TikTok, Instagram, YouTube, Facebook.
    *
-   * Ciaśniej niż wcześniej, bo cała czwórka ma wystrzelić jak jeden ładunek —
-   * ale nadal nierówno, żeby nie czytało się to jak jedna klatka kluczowa.
+   * Bardzo małe i nierówne. Cała czwórka ma opuścić pudełko jak jeden ładunek,
+   * ale nie w tej samej klatce — równy start czyta się jak jedna klatka
+   * kluczowa, a nie jak cztery przedmioty.
    */
-  delays: [0.0, 0.07, 0.03, 0.11],
+  delays: [0.0, 0.05, 0.02, 0.08],
 
   /** Ułamek fazy na przelot jednej ikony. */
-  duration: 0.74,
+  duration: 0.82,
 
   /**
-   * Ułamek lotu zajmowany przez WYSTRZAŁ PIONOWY.
+   * Formacja to OKRĄG, nie elipsa.
    *
-   * Klient poprosił wprost: ikony mają najpierw lecieć prosto w górę,
-   * a dopiero potem rozejść się po okręgu. Ten podział jest sednem ruchu —
-   * pionowy start czyta się jak wyrzucenie z pudełka, a rozejście po łuku
-   * jak przejęcie ich przez formację. Dwie różne przyczyny, więc dwie
-   * różne fazy.
+   * Wcześniej była tu elipsa — dawała namiastkę głębi, ale miała wadę
+   * dyskwalifikującą: na elipsie równe kąty NIE dają równych odległości.
+   * Ikony raz zbliżałyby się do siebie, raz oddalały, a wymóg brzmi:
+   * stały, wyraźny odstęp przez cały czas. Na okręgu cztery znaki
+   * co 90° są równo oddalone zawsze — to gwarancja geometryczna,
+   * nie efekt dobrego doboru wartości.
    */
-  launchRatio: 0.4,
+  orbitRadiusPx: 380,
 
   /**
-   * Boczne rozsunięcie podczas wystrzału, w px.
-   *
-   * Bez tego wszystkie cztery ikony lecą po dokładnie tej samej pionowej
-   * linii i — mimo różnych opóźnień — układają się w SŁUPEK, który czyta się
-   * jak sterta, a nie jak wyrzut. Kilkadziesiąt pikseli w bok wystarczy,
-   * żeby zobaczyć cztery osobne przedmioty.
-   *
-   * Wartości nierówne i o różnych znakach: ładunek rozrzuca, nie rozstawia.
-   */
-  launchSpreadPx: [-46, 21, -17, 52],
-
-  /**
-   * Zróżnicowanie wysokości szczytu, jako ułamek promienia. Gdyby wszystkie
-   * zatrzymywały się na tej samej wysokości, powstałaby widoczna pozioma
-   * linia — a nic w tej scenie nie ma prawa być wyrównane do linijki.
-   */
-  apexJitter: [0.0, -0.11, 0.07, -0.05],
-
-  /**
-   * Formacja to ELIPSA, nie okrąg.
-   *
-   * Spłaszczenie w pionie czyta się jako okrąg oglądany pod kątem, więc
-   * ikony krążące po nim zdają się raz przybliżać, raz oddalać. Idealny
-   * okrąg wyglądałby jak płaska tarcza — a chcemy przestrzeni.
-   */
-  orbitRadiusPx: 300,
-  orbitFlatten: 0.66,
-
-  /**
-   * Kąty docelowe na elipsie, w stopniach, liczone od GÓRY zgodnie z ruchem
-   * wskazówek zegara. Wszystkie ikony wystrzeliwują do punktu 0 (szczyt)
-   * i dopiero stamtąd rozjeżdżają się na swoje miejsca — jak na taśmie.
+   * Kąty docelowe, w stopniach od góry. Cztery równe ćwiartki.
+   * Każda ikona leci PROSTO na swoje miejsce — bez zbiórki w jednym punkcie
+   * i bez rozjeżdżania się po obwodzie, o co prosił klient wprost.
    */
   slotAngles: [0, 90, 180, 270],
 
-  /** Skala startowa w gardzieli pudełka. Mała = wrażenie głębi. */
-  startScale: 0.2,
+  /** Skala startowa w gardzieli pudełka. Mała = wrażenie głębi przy wylocie. */
+  startScale: 0.22,
 
   /**
-   * Głębia na elipsie: ikona na dole jest BLIŻEJ widza, więc większa,
-   * i musi zasłaniać te z tyłu. Bez tego elipsa spłaszcza się z powrotem
-   * do tarczy.
+   * Okres pełnego obiegu formacji w sekundach.
+   *
+   * 15 s przy promieniu 330 px daje ok. 140 px/s — ruch wyraźnie widoczny
+   * i dynamiczny, a jednocześnie na tyle spokojny, że nie odciąga uwagi
+   * od treści w środku pierścienia.
    */
-  depthScale: 0.16,
-
-  /** Obrót własny w locie, stopnie. Każda ikona inna i w inną stronę. */
-  spinDeg: [300, -240, 260, -340],
+  orbitPeriodS: 15,
 
   /**
-   * Okres pełnego obiegu formacji po osadzeniu. Powolny — to ma być tło
-   * dla treści w środku, nie karuzela odciągająca uwagę.
+   * Ułamek lotu, po którym obieg osiąga pełną prędkość.
+   *
+   * Klucz do wymogu „bez żadnych nagłych zatrzymań": obrót narasta JUŻ
+   * W TRAKCIE lotu, więc w chwili dotarcia na miejsce ikona jest już
+   * w pełnym ruchu. Gdyby obieg startował po wylądowaniu, powstałby
+   * moment bezruchu — dokładnie to, czego klient nie chce.
    */
-  orbitPeriodS: 34,
-
-  /** Amplituda wahadła kafelka wokół osi pionowej. NIE pełny obrót. */
-  idleSwingDeg: 14,
-  idleSpinPeriodS: [11.3, 14.7, 9.1, 17.2],
+  orbitRampRatio: 0.55,
 } as const;
 
 /**

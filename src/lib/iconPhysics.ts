@@ -1,21 +1,26 @@
 import { ICONS, PHASES } from '../config/scene';
-import { clamp, easeOutBack, easeOutCubic, easeOutQuint, lerp, mapRange, phaseProgress } from './math';
+import { clamp, easeOutCubic, easeOutQuint, lerp, mapRange, phaseProgress } from './math';
 
 /**
- * Lot ikon — czysta funkcja, tak jak fizyka pudełka.
+ * Ruch ikon — czysta funkcja, tak jak fizyka pudełka.
  *
- * Ruch ma DWA etapy o różnych przyczynach i dlatego różnych krzywych:
+ * ZASADA NADRZĘDNA: ikona leci PROSTO na swoje miejsce na orbicie.
  *
- * 1. WYSTRZAŁ — pionowo w górę, prosto z gardzieli pudełka. Ikona jest
- *    wyrzucona: gwałtowny start, długie hamowanie.
- * 2. ROZEJŚCIE — od szczytu elipsy każda ikona jedzie po jej obwodzie na
- *    swoje miejsce. Tu nie ma już wyrzutu, jest przejęcie przez formację,
- *    więc krzywa jest łagodniejsza, z przestrzeleniem na końcu.
+ * Poprzednia wersja robiła to inaczej — wszystkie wystrzeliwały do jednego
+ * punktu nad pudełkiem, tam się zatrzymywały, a dopiero potem rozjeżdżały
+ * po obwodzie na swoje pozycje. To dawało trzy osobne ruchy zamiast jednego
+ * i wyraźny martwy moment w środku. Klient zgłosił to wprost i miał rację:
+ * czytało się jak trzy sklejone animacje, nie jak jedno zdarzenie.
  *
- * Sklejenie tego w jeden ruch (jak było wcześniej — jeden łuk Béziera)
- * czytało się jako jedna czynność. Rozdzielenie daje dwie, a to jest
- * dokładnie to, co widz ma zobaczyć: coś wystrzeliło, a potem zostało
- * ustawione w szyku.
+ * Teraz jest jeden ruch: promień rośnie od zera do docelowego, a kąt od
+ * początku jest ustawiony na docelowy. Ikona wyjeżdża z pudełka po prostej
+ * w stronę swojej pozycji i tam zostaje. Obieg formacji narasta JUŻ W TRAKCIE
+ * tego lotu, więc w chwili dotarcia ikona jest w pełnym ruchu — nigdzie
+ * nie ma zatrzymania.
+ *
+ * Efektem ubocznym jest delikatna spirala: kąt zmienia się, gdy promień jeszcze
+ * rośnie. To nie jest ozdobnik doklejony do ruchu, tylko konsekwencja tego,
+ * że układ już się kręci — i właśnie dlatego wygląda naturalnie.
  */
 
 export interface IconState {
@@ -23,13 +28,7 @@ export interface IconState {
   readonly x: number;
   readonly y: number;
   readonly scale: number;
-  readonly rotateDeg: number;
-  /** Wahadło wokół osi pionowej po osadzeniu. */
-  readonly spinDeg: number;
   readonly opacity: number;
-  /** Kolejność rysowania: ikony z przodu elipsy zasłaniają te z tyłu. */
-  readonly depth: number;
-  readonly shadowScale: number;
   readonly shadowOpacity: number;
   /**
    * 0 = ikona wciąż w gardzieli pudełka, 1 = całkiem na zewnątrz.
@@ -58,87 +57,60 @@ export const computeIconState = (
   const delay = ICONS.delays[index] ?? 0;
   const localT = clamp(mapRange(phaseT, delay, delay + ICONS.duration, 0, 1));
 
-  const radiusY = radiusPx * ICONS.orbitFlatten;
-
-  /* --- ETAP 1: WYSTRZAŁ PIONOWY --- */
-
-  const launchT = clamp(mapRange(localT, 0, ICONS.launchRatio, 0, 1));
   /**
-   * Piąta potęga: bardzo gwałtowny start, długie hamowanie. Ikona dostaje
-   * impuls raz i dalej tylko wytraca energię — nic jej po drodze nie popycha.
+   * Profil prędkości wylotu: piąta potęga. Bardzo gwałtowny start, długie
+   * hamowanie. Ikona dostaje impuls raz i dalej tylko wytraca energię —
+   * nic jej po drodze nie popycha.
    */
-  const launchEased = easeOutQuint(launchT);
+  const flightEased = easeOutQuint(localT);
 
   /**
-   * Szczyt lotu. Każda ikona ma własną wysokość docelową — wyrównanie
-   * do jednej linii natychmiast zdradza generator.
+   * Narastanie obiegu.
+   *
+   * To jest mechanizm, który realizuje wymóg „bez żadnych nagłych zatrzymań".
+   * Prędkość kątowa dochodzi do pełnej wartości jeszcze w trakcie lotu
+   * (domyślnie po 55% drogi), więc ikona nie „ląduje i rusza", tylko
+   * cały czas jest w ruchu. Gdyby obieg startował po wylądowaniu, w tym
+   * miejscu powstałaby wyraźna dziura.
    */
-  const apexY = -radiusY * (1 + (ICONS.apexJitter[index] ?? 0));
-  const launchY = lerp(THROAT_Y, apexY, launchEased);
+  const orbitRamp = easeOutCubic(clamp(mapRange(localT, 0, ICONS.orbitRampRatio, 0, 1)));
 
   /**
-   * Boczne rozsunięcie. Narasta w trakcie wystrzału i wygasa, gdy ikona
-   * wchodzi na elipsę — tor musi skończyć DOKŁADNIE na obwodzie, inaczej
-   * w miejscu przejęcia przez formację widać szarpnięcie.
+   * Obieg jest CIĄGŁY i wspólny dla wszystkich czterech ikon: liczony
+   * z czasu, nie ze scrolla. Dzięki temu formacja krąży również wtedy,
+   * gdy użytkownik przestanie przewijać — pierścień żyje własnym rytmem,
+   * a scroll steruje wyłącznie narracją.
    */
-  const lateralX = (ICONS.launchSpreadPx[index] ?? 0) * launchEased;
+  const orbitDeg = (elapsedS / ICONS.orbitPeriodS) * 360 * orbitRamp;
 
-  /* --- ETAP 2: ROZEJŚCIE PO ELIPSIE --- */
-
-  const spreadT = clamp(mapRange(localT, ICONS.launchRatio, 1, 0, 1));
+  /**
+   * Kąt docelowy ustawiony jest OD RAZU. Ikona nie „szuka" swojego miejsca —
+   * ona od pierwszej klatki leci dokładnie tam, gdzie ma być.
+   */
   const slot = ICONS.slotAngles[index] ?? 0;
+  const angleRad = (slot + orbitDeg - 90) * DEG;
 
+  /** Promień rośnie od zera: to jest cały lot, jeden ruch. */
+  const r = radiusPx * flightEased;
+
+  const x = Math.cos(angleRad) * r;
   /**
-   * Przestrzelenie stosujemy do POSTĘPU po obwodzie, nie do pozycji.
-   * Przestrzelona pozycja odjechałaby od elipsy; przestrzelony postęp
-   * przenosi ikonę dalej WZDŁUŻ niej i sprowadza z powrotem — czyli ruch
-   * zostaje na swoim torze, tak jak przedmiot z bezwładnością.
+   * Przesunięcie startowe do gardzieli pudełka, wygasające wraz z lotem.
+   * Przy r = 0 ikona siedzi w otworze; przy pełnym promieniu składnik
+   * ten jest już zerowy, więc pozycja leży dokładnie na okręgu.
    */
-  const spreadEased = spreadT > 0 ? easeOutBack(easeOutCubic(spreadT), 1.5) : 0;
+  const y = Math.sin(angleRad) * r + THROAT_Y * (1 - flightEased);
 
   /**
-   * Powolny obieg całej formacji po osadzeniu.
+   * Skala rośnie od bardzo małej. To jedyny sygnał głębi przy wylocie:
+   * ikona startuje w środku pudełka, czyli DALEKO od widza, i przybliża się,
+   * wychodząc. Bez tego wygląda, jakby wysunęła się zza kartonu.
    *
-   * To jest ten „obrót po kole", o który prosił klient: nie każda ikona
-   * wokół własnej osi, tylko wszystkie razem po wspólnym torze. Narasta
-   * dopiero pod koniec rozejścia, żeby nie walczyć z nim o czytelność.
+   * Wszystkie ikony kończą na skali 1 — żadnego różnicowania wielkości
+   * na orbicie. Klient wymaga równomiernego, uporządkowanego układu,
+   * a różne rozmiary to od razu wrażenie przypadkowości.
    */
-  const settled = clamp(mapRange(localT, 0.72, 1, 0, 1));
-  const orbitDeg = (elapsedS / ICONS.orbitPeriodS) * 360 * settled;
-
-  /** Kąt liczony od szczytu elipsy, zgodnie z ruchem wskazówek zegara. */
-  const angleDeg = slot * spreadEased + orbitDeg;
-  const angleRad = (angleDeg - 90) * DEG;
-
-  const orbitX = Math.cos(angleRad) * radiusPx;
-  const orbitY = Math.sin(angleRad) * radiusY;
-
-  /**
-   * Sklejenie etapów.
-   *
-   * Dopóki trwa wystrzał, pozycja jest czysto pionowa. Potem przechodzimy
-   * na elipsę — a ponieważ oba etapy spotykają się dokładnie w szczycie
-   * elipsy (kąt 0), przejście jest ciągłe i nie widać w nim szwu.
-   */
-  const spreadBlend = easeOutCubic(spreadT);
-  const x = lerp(lateralX, orbitX, spreadBlend);
-  const y = lerp(launchY, orbitY, spreadBlend);
-
-  /* --- GŁĘBIA --- */
-
-  /**
-   * Ikona na dole elipsy jest bliżej widza: większa i rysowana na wierzchu.
-   * Bez tego elipsa spłaszcza się z powrotem do płaskiej tarczy, bo nic
-   * nie sugeruje, że to okrąg widziany pod kątem.
-   */
-  const depthFactor = Math.sin(angleRad);
-  const depthScale = 1 + depthFactor * ICONS.depthScale;
-
-  const baseScale = lerp(ICONS.startScale, 1, easeOutQuint(localT));
-  const scale = baseScale * (spreadT > 0 ? depthScale : 1);
-
-  const spinTotal = ICONS.spinDeg[index] ?? 300;
-  const rotateDeg = spinTotal * (1 - easeOutQuint(localT));
+  const scale = lerp(ICONS.startScale, 1, flightEased);
 
   /**
    * Wyłanianie się. Dopóki ikona nie opuści obrysu pudełka, zasłania ją
@@ -146,35 +118,16 @@ export const computeIconState = (
    * poświata nie ma prawa być widoczna — świecąca aura wokół zasłoniętego
    * obiektu natychmiast zdradziłaby, że to dwie płaskie warstwy.
    */
-  const emergence = clamp(mapRange(localT, 0.1, 0.36, 0, 1));
-
-  /* --- RUCH WŁASNY --- */
-
-  const spinPeriod = ICONS.idleSpinPeriodS[index] ?? 12;
-  /**
-   * Wahadło, nie pełny obrót. Kafelek jest płaski: przy obrocie o 360°
-   * dwa razy na cykl staje bokiem i znika, a przez połowę czasu pokazuje
-   * lustrzane odbicie znaku marki. Żadna z tych marek na to nie pozwala.
-   */
-  const spinDeg =
-    Math.sin((elapsedS / spinPeriod) * Math.PI * 2 + index * 0.9) * ICONS.idleSwingDeg * settled;
-
-  /** Cień słabnie i kurczy się dla ikon oddalonych (górna część elipsy). */
-  const shadowScale = lerp(0.8, 1.05, (depthFactor + 1) / 2) * baseScale;
-  const shadowOpacity = lerp(0.16, 0.42, (depthFactor + 1) / 2) * settled;
+  const emergence = clamp(mapRange(localT, 0.08, 0.34, 0, 1));
 
   return {
     x,
     y,
     scale,
-    rotateDeg,
-    spinDeg,
     // Niewidoczna, dopóki nie ruszy — inaczej cztery kafelki czekałyby
     // stłoczone w gardzieli, zanim przyjdzie ich kolej.
     opacity: localT > 0 ? 1 : 0,
-    depth: depthFactor,
-    shadowScale,
-    shadowOpacity,
+    shadowOpacity: 0.34 * flightEased,
     emergence,
   };
 };
