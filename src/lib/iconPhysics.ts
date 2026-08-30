@@ -69,9 +69,19 @@ export const computeIconState = (
    */
   const launchEased = easeOutQuint(launchT);
 
-  /** Szczyt elipsy — punkt, do którego wystrzeliwują wszystkie ikony. */
-  const apexY = -radiusY;
+  /**
+   * Szczyt lotu. Każda ikona ma własną wysokość docelową — wyrównanie
+   * do jednej linii natychmiast zdradza generator.
+   */
+  const apexY = -radiusY * (1 + (ICONS.apexJitter[index] ?? 0));
   const launchY = lerp(THROAT_Y, apexY, launchEased);
+
+  /**
+   * Boczne rozsunięcie. Narasta w trakcie wystrzału i wygasa, gdy ikona
+   * wchodzi na elipsę — tor musi skończyć DOKŁADNIE na obwodzie, inaczej
+   * w miejscu przejęcia przez formację widać szarpnięcie.
+   */
+  const lateralX = (ICONS.launchSpreadPx[index] ?? 0) * launchEased;
 
   /* --- ETAP 2: ROZEJŚCIE PO ELIPSIE --- */
 
@@ -110,8 +120,9 @@ export const computeIconState = (
    * na elipsę — a ponieważ oba etapy spotykają się dokładnie w szczycie
    * elipsy (kąt 0), przejście jest ciągłe i nie widać w nim szwu.
    */
-  const x = spreadT > 0 ? orbitX : 0;
-  const y = spreadT > 0 ? orbitY : launchY;
+  const spreadBlend = easeOutCubic(spreadT);
+  const x = lerp(lateralX, orbitX, spreadBlend);
+  const y = lerp(launchY, orbitY, spreadBlend);
 
   /* --- GŁĘBIA --- */
 

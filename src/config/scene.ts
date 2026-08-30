@@ -272,6 +272,25 @@ export const ICONS = {
   launchRatio: 0.4,
 
   /**
+   * Boczne rozsunięcie podczas wystrzału, w px.
+   *
+   * Bez tego wszystkie cztery ikony lecą po dokładnie tej samej pionowej
+   * linii i — mimo różnych opóźnień — układają się w SŁUPEK, który czyta się
+   * jak sterta, a nie jak wyrzut. Kilkadziesiąt pikseli w bok wystarczy,
+   * żeby zobaczyć cztery osobne przedmioty.
+   *
+   * Wartości nierówne i o różnych znakach: ładunek rozrzuca, nie rozstawia.
+   */
+  launchSpreadPx: [-46, 21, -17, 52],
+
+  /**
+   * Zróżnicowanie wysokości szczytu, jako ułamek promienia. Gdyby wszystkie
+   * zatrzymywały się na tej samej wysokości, powstałaby widoczna pozioma
+   * linia — a nic w tej scenie nie ma prawa być wyrównane do linijki.
+   */
+  apexJitter: [0.0, -0.11, 0.07, -0.05],
+
+  /**
    * Formacja to ELIPSA, nie okrąg.
    *
    * Spłaszczenie w pionie czyta się jako okrąg oglądany pod kątem, więc
