@@ -5,12 +5,13 @@ import {
   FALL,
   FLAPS,
   PHASES,
+  SEAM_LIGHT,
   SHADOW,
-  TAPE_BREAK,
 } from '../config/scene';
 import {
   clamp,
   easeInQuad,
+  easeOutQuad,
   easeOutCubic,
   easeOutQuint,
   lerp,
@@ -44,10 +45,12 @@ export interface BoxState {
   /** Cień kontaktowy — twarda obwódka w punkcie styku, gaśnie po oderwaniu. */
   readonly contactOpacity: number;
   readonly contactBlurPx: number;
+  /** Obrót wokół osi poprzecznej, stopnie. Dokłada się do stałego skosu bryły. */
+  readonly pitchDeg: number;
   /** Kąty czterech klap: przód, tył, lewa, prawa. */
   readonly flapAngles: readonly [number, number, number, number];
-  /** Zerwanie taśmy, 0–1. */
-  readonly tapeBreak: number;
+  /** Światło narastające w szwie tuż przed wystrzałem klap, 0–1. */
+  readonly seamLight: number;
   /** Upadek: przesunięcie w dół w wysokościach pudełka. */
   readonly fallY: number;
   readonly fallRollDeg: number;
@@ -128,6 +131,22 @@ export const computeBoxState = (elapsedS: number, progress: number): BoxState =>
   const yawDeg = Math.sin((elapsedS / FLOAT.yawPeriodS) * Math.PI * 2) * FLOAT.yawAmplitudeDeg;
 
   /**
+   * Drugi mikroobrót, w osi poprzecznej.
+   *
+   * Sam obrót w pionie zostawia bryłę, która kręci się jak na talerzu
+   * obrotowym — ruch jest, ale w jednej płaszczyźnie, więc oko odczytuje go
+   * jako mechaniczny. Dopiero DWIE niewspółmierne osie (13.7 s i 19.3 s)
+   * dają kołysanie, którego tor nigdy się nie powtarza, i to jest różnica
+   * między "przedmiotem w przestrzeni" a "obracającym się modelem".
+   *
+   * Amplituda o połowę mniejsza niż w osi pionowej: przechył pokazuje górę
+   * pudełka, a ta jest w tej scenie najbardziej wrażliwa — przy większym
+   * kącie zaczyna się zaglądanie do wnętrza jeszcze przed otwarciem.
+   */
+  const pitchDeg =
+    Math.sin((elapsedS / FLOAT.pitchPeriodS) * Math.PI * 2) * FLOAT.pitchAmplitudeDeg;
+
+  /**
    * Cień jako funkcja wysokości.
    *
    * Bez tego pudełko jest naklejką, która zmienia rozmiar — z tym staje się
@@ -135,7 +154,22 @@ export const computeBoxState = (elapsedS: number, progress: number): BoxState =>
    * rozmycie) dlatego, że tak zachowuje się prawdziwy cień: im dalej od
    * powierzchni, tym mniejszy, jaśniejszy i bardziej rozmyty.
    */
-  const heightRatio = clamp(Math.abs(height) / FLOAT.amplitude);
+  /**
+   * Wysokość → 0..1, gdzie 0 to najniższy punkt unoszenia.
+   *
+   * TU BYŁ BŁĄD, i to taki, który przeżył zmianę animacji. Wcześniej pudełko
+   * PODSKAKIWAŁO: tor był parabolą wychodzącą z zera w górę, więc `height`
+   * nigdy nie schodziło poniżej podłoża i `Math.abs()` było poprawne.
+   *
+   * Po zamianie podskoku na sinusoidalne unoszenie `height` waha się
+   * SYMETRYCZNIE wokół zera — a wtedy wartość bezwzględna daje 1 zarówno na
+   * szczycie, jak i na DNIE ruchu. Skutek: cień kontaktowy gasł dokładnie
+   * wtedy, gdy pudełko jest najniżej, czyli gdy ma być najmocniejszy.
+   * Zmierzone krycie w tym stanie wynosiło 0.001 — cienia po prostu nie było.
+   *
+   * Poprawnie: przemapowanie z [−amplituda, +amplituda] na [0, 1].
+   */
+  const heightRatio = clamp((height / FLOAT.amplitude + 1) / 2);
   const shadowScale = lerp(SHADOW.scaleGround, SHADOW.scaleApex, heightRatio);
   const shadowOpacity = lerp(SHADOW.opacityGround, SHADOW.opacityApex, heightRatio);
   const shadowBlurPx = lerp(SHADOW.blurGroundPx, SHADOW.blurApexPx, heightRatio);
@@ -149,9 +183,17 @@ export const computeBoxState = (elapsedS: number, progress: number): BoxState =>
    * wygaszanie zostawiałoby ciemną plamkę pod pudełkiem wiszącym u szczytu —
    * i to jest jeden z tych detali, których nikt nie nazwie, ale każdy odbierze
    * jako "coś tu jest nie tak".
+   *
+   * Krzywa NIE schodzi jednak do zera, tylko do `floor`. Przy podskoku pudełko
+   * naprawdę odrywało się od podłoża; przy unoszeniu waha się o kilka pikseli
+   * i szczelina pod nim nigdy się w pełni nie otwiera. Zejście do zera dawało
+   * przedmiot bez cienia w połowie cyklu — a klient prosił wprost o cienie.
+   * Pełne wygaszenie należy teraz do fazy UPADKU i robi je osobny mnożnik.
    */
   const contactOpacity =
-    CONTACT_SHADOW.opacityGround * Math.pow(1 - heightRatio, CONTACT_SHADOW.falloffExponent);
+    CONTACT_SHADOW.opacityGround *
+    (CONTACT_SHADOW.floor +
+      (1 - CONTACT_SHADOW.floor) * Math.pow(1 - heightRatio, CONTACT_SHADOW.falloffExponent));
   const contactBlurPx = lerp(CONTACT_SHADOW.blurGroundPx, CONTACT_SHADOW.blurApexPx, heightRatio);
 
   /* --- FAZA 2: WYSTRZAŁ KLAP --- */
@@ -195,7 +237,21 @@ export const computeBoxState = (elapsedS: number, progress: number): BoxState =>
     flapAngle(FLAPS.delays[3]),
   ] as const;
 
-  const tapeBreak = clamp(mapRange(openT, TAPE_BREAK.range[0], TAPE_BREAK.range[1], 0, 1));
+  /**
+   * Światło w szwie: narasta w ZAMACHU, gaśnie razem z pierwszą klapą.
+   *
+   * Dwie osobne krzywe, bo to dwa różne zjawiska. Narastanie idzie z wysokiego
+   * wykładnika (ciśnienie rośnie coraz szybciej — przez większość zamachu nie
+   * dzieje się nic widocznego), a wygaszanie z easeOutQuad, czyli natychmiast:
+   * gdy szczelina puszcza, nadciśnienie znika w jednej chwili.
+   *
+   * Gdyby obie strony miały tę samą krzywą, dostalibyśmy symetryczne
+   * pulsowanie — a to czyta się jak lampka kontrolna, nie jak coś, co zaraz
+   * pęknie.
+   */
+  const seamBuild = Math.pow(anticipation, SEAM_LIGHT.buildExponent);
+  const seamFade = easeOutQuad(clamp(openT / SEAM_LIGHT.fadeRatio));
+  const seamLight = seamBuild * (1 - seamFade) * SEAM_LIGHT.peakOpacity;
 
   /* --- FAZA 4: UPADEK --- */
   const fallT = phaseProgress(progress, PHASES.FALL);
@@ -229,6 +285,7 @@ export const computeBoxState = (elapsedS: number, progress: number): BoxState =>
     shadowScale,
     shadowOpacity: shadowOpacity * (1 - clamp(fallT * 2)),
     shadowBlurPx,
+    pitchDeg,
     /**
      * Cienie gasną razem z odlotem bryły. Cień przedmiotu, który wypadł
      * z kadru, nie ma prawa zostać na podłodze — a przy szybkim upadku
@@ -238,7 +295,7 @@ export const computeBoxState = (elapsedS: number, progress: number): BoxState =>
     contactOpacity: contactOpacity * (1 - clamp(fallT * 3)),
     contactBlurPx,
     flapAngles,
-    tapeBreak,
+    seamLight,
     fallY,
     fallRollDeg,
     fallTumbleDeg,

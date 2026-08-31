@@ -1,11 +1,28 @@
 import { useRef, type CSSProperties, type RefObject } from 'react';
-import { BOX, CARDBOARD, CONTACT_SHADOW, FLAPS, FLOAT, RIM_LIGHT, TAPE_BREAK } from '../../config/scene';
+import {
+  AMBIENT_SHADOW,
+  BOUNCE_LIGHT,
+  BOX,
+  CARDBOARD,
+  CONTACT_SHADOW,
+  FLAPS,
+  FLAP_SHAPE,
+  FLOAT,
+  RIM_LIGHT,
+} from '../../config/scene';
 import { computeBoxState } from '../../lib/boxPhysics';
 import { round } from '../../lib/math';
 import { TICK_PRIORITY } from '../../lib/ticker';
 import { useTicker } from '../../hooks/useTicker';
 import type { ScrollState } from '../../hooks/useScrollProgress';
-import { cardboardSurface, CORRUGATION, TAPE, TAPE_BOTTOM_HALF, TAPE_TOP_HALF } from './cardboard';
+import {
+  cardboardSurface,
+  CORRUGATION,
+  edgeFillet,
+  FLAP_GLOSS,
+  FLAP_RADIUS,
+  keyLight,
+} from './cardboard';
 
 /**
  * Pudełko zbudowane w CSS 3D.
@@ -23,8 +40,39 @@ const HALF_D = BOX.depthPx / 2;
 /** Udawana grubość tektury. Widoczna na cięciach klap. */
 const BOARD_THICKNESS_PX = 3.5;
 
-/** Jak daleko taśma schodzi po ścianie za krawędzią. */
-const TAPE_FOLD_PX = 22;
+/**
+ * Wsunięcie fazki względem ostrego narożnika.
+ *
+ * Fazka to ścięcie pod 45° na pionowej krawędzi. Ścięcie odsunięte o `t`
+ * wzdłuż normalnej odsłania po t·√2 na każdej ze ścian, czyli ma szerokość
+ * 2t; chcąc fazkę szerokości `edgeFilletPx`, wsuwamy ją o połowę tej wartości.
+ * Środek powstałego paska leży wtedy o t·√2/2 do wewnątrz od obu ścian.
+ *
+ * UWAGA — TU BYŁ BŁĄD I WART JEST ZAPAMIĘTANIA. Pierwsza wersja ustawiała
+ * fazkę zapisem `rotateY(45deg) translateZ(d)`, czyli w odległości `d` wzdłuż
+ * normalnej. To jest STOPA PROSTOPADŁEJ ze środka bryły, a nie środek ścięcia —
+ * a te dwa punkty pokrywają się WYŁĄCZNIE wtedy, gdy rzut pudełka jest
+ * kwadratem. Przy 230 × 172 rozjeżdżały się o 20 px, czyli więcej niż cała
+ * szerokość fazki: paski lądowały na środku ścian i wyglądały jak doklejone
+ * pionowe listwy. Dlatego środek liczymy WPROST, we współrzędnych bryły.
+ */
+const FILLET_INSET = (BOX.edgeFilletPx * Math.SQRT2) / 4;
+
+/**
+ * Cztery pionowe krawędzie.
+ *
+ * `spec` to siła refleksu i jest RÓŻNA dla każdej krawędzi, bo światło pada
+ * z góry z lewej. Krawędź przednio-lewa patrzy w nie niemal prosto — i to ona
+ * ma być najjaśniejszą powierzchnią całej bryły. Tylne są od źródła odwrócone
+ * i dostają ledwie ślad. Jednakowy refleks na wszystkich czterech natychmiast
+ * spłaszcza pudełko, bo mówi oku, że światło przychodzi zewsząd, czyli znikąd.
+ */
+const EDGE_FILLETS = [
+  { key: 'front-left', sx: -1, sz: 1, rotY: -45, spec: 0.3 },
+  { key: 'front-right', sx: 1, sz: 1, rotY: 45, spec: 0.12 },
+  { key: 'back-right', sx: 1, sz: -1, rotY: 135, spec: 0.05 },
+  { key: 'back-left', sx: -1, sz: -1, rotY: -135, spec: 0.09 },
+] as const;
 
 /**
  * Poziom podłoża, liczony od GÓRNEJ krawędzi kontenera.
@@ -59,19 +107,36 @@ const PROJECTED_BOTTOM =
  */
 const GROUND_Y = HALF_H + PROJECTED_BOTTOM - 12;
 
+/**
+ * Zejście środka cienia PONIŻEJ linii styku.
+ *
+ * Zmierzone: przy elipsie wyśrodkowanej dokładnie na GROUND_Y (a tak było)
+ * najciemniejszy punkt cienia wypada 11 px pod najniższym pikselem pudełka —
+ * czyli praktycznie w całości ZA bryłą. Krycie było poprawne, warstwy
+ * istniały, a cienia po prostu nie było widać. To ta sama pułapka co przy
+ * poprzedniej iteracji: elipsa leżąca na podłodze pod przedmiotem oddaje
+ * widzowi wyłącznie swoje BOKI, bo środek zasłania sam przedmiot.
+ *
+ * Rozwiązaniem nie jest podkręcanie krycia — przy zasłoniętym środku nic to
+ * nie daje — tylko zsunięcie plamy w dół, tak żeby jej ciemny rdzeń wyszedł
+ * spod bryły. Fizycznie odpowiada to światłu padającemu z góry i OD PRZODU,
+ * czyli dokładnie stamtąd, skąd świeci nasze światło kluczowe.
+ */
+const SHADOW_DROP_PX = BOX.depthPx * 0.17;
+
 const faceBase: CSSProperties = {
   position: 'absolute',
   left: '50%',
   top: '50%',
   backfaceVisibility: 'hidden',
   /**
-   * Minimalne zaokrąglenie narożników.
+   * Zaokrąglenie narożników.
    *
-   * Prawdziwy karton ma zmiękczone, lekko zagniecione krawędzie, nie ostre
-   * jak żyletka. Promień musi jednak zostać BARDZO mały: ściany to płaskie
-   * prostokąty w przestrzeni 3D, a nie prawdziwa bryła, więc przy większym
-   * zaokrągleniu przestają się schodzić i w narożnikach pojawiają się
-   * prześwity na tło.
+   * Promień mógł urosnąć dopiero wtedy, gdy pionowe krawędzie dostały fazki
+   * (patrz FILLET_DISTANCE). Wcześniej każde zaokrąglenie rozsuwało płaskie
+   * prostokąty ścian i w narożnikach pojawiały się prześwity na tło; teraz
+   * ścięcie tę szczelinę wypełnia, więc karton może być tak miękki, jak
+   * wymaga tego styl ilustracji.
    */
   borderRadius: `${BOX.cornerRadiusPx}px`,
 };
@@ -82,11 +147,12 @@ interface CssBoxProps {
 
 export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
   const boxRef = useRef<HTMLDivElement>(null);
+  const ambientShadowRef = useRef<HTMLDivElement>(null);
   const softShadowRef = useRef<HTMLDivElement>(null);
   const contactShadowRef = useRef<HTMLDivElement>(null);
+  const bounceRef = useRef<HTMLDivElement>(null);
   const flapRefs = useRef<Array<HTMLDivElement | null>>([]);
-  const tapeRefs = useRef<Array<HTMLDivElement | null>>([]);
-  const tapeFoldRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const seamRefs = useRef<Array<HTMLDivElement | null>>([]);
 
   useTicker((_deltaS, elapsedS) => {
     const { smooth } = scrollRef.current;
@@ -109,7 +175,7 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
       boxRef.current.style.transform = [
         `translate3d(0, ${round(totalY)}px, 0)`,
         `rotateZ(${round(state.fallRollDeg, 2)}deg)`,
-        `rotateX(${round(FLOAT.restTiltXDeg + state.fallTumbleDeg, 2)}deg)`,
+        `rotateX(${round(FLOAT.restTiltXDeg + state.pitchDeg + state.fallTumbleDeg, 2)}deg)`,
         `rotateY(${round(FLOAT.restTiltYDeg + state.yawDeg)}deg)`,
         `scale3d(${round(state.scaleX, 4)}, ${round(state.scaleY, 4)}, ${round(state.scaleX, 4)})`,
       ].join(' ');
@@ -126,27 +192,24 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
     }
 
     /**
-     * Taśma pęka i rozchodzi się na boki, każda połówka w swoją stronę
-     * i z lekkim skręceniem. Zaraz potem gaśnie — nie dlatego, że taśma
-     * znika, tylko dlatego, że przy tej prędkości i tak przestaje być
-     * czytelna, a jej ślad na otwartych klapach dodawałby wyłącznie bałaganu.
+     * Światło w szwie — następca pękającej taśmy.
+     *
+     * Animujemy WYŁĄCZNIE `opacity`. Kusiło, żeby razem z narastaniem
+     * poszerzać też smugę, ale to jest dokładnie ta klasa zmian, która
+     * w tej scenie kosztuje połowę budżetu klatki: szerokość to KSZTAŁT,
+     * a kształt wewnątrz `preserve-3d` przelicza się od nowa co klatkę.
      */
     for (let i = 0; i < 2; i += 1) {
-      const node = tapeRefs.current[i];
-      if (!node) continue;
-      const direction = i === 0 ? -1 : 1;
-      const offset = state.tapeBreak * TAPE_BREAK.partPx * direction;
-      const curl = state.tapeBreak * TAPE_BREAK.curlDeg * direction;
-      node.style.transform = `translate3d(0, ${round(offset)}px, 0) rotateZ(${round(curl, 2)}deg)`;
-      node.style.opacity = `${round(1 - state.tapeBreak * 0.85, 3)}`;
+      const node = seamRefs.current[i];
+      if (node) node.style.opacity = `${round(state.seamLight, 3)}`;
     }
 
-    // Zakładki gasną razem z pęknięciem: raz zerwana taśma nie trzyma się
-    // już krawędzi, a animowanie ich odklejania byłoby detalem, którego
-    // przy tej prędkości i tak nikt nie zobaczy.
-    for (let i = 0; i < 2; i += 1) {
-      const node = tapeFoldRefs.current[i];
-      if (node) node.style.opacity = `${round(1 - state.tapeBreak, 3)}`;
+    if (ambientShadowRef.current) {
+      // Okluzja otoczenia reaguje na wysokość ZNACZNIE słabiej niż cień
+      // rzucony: to ubytek światła rozproszonego, więc kilka centymetrów
+      // uniesienia niewiele w nim zmienia. Stąd spłaszczony zakres.
+      const s = ambientShadowRef.current.style;
+      s.opacity = `${round(AMBIENT_SHADOW.opacity * (0.72 + state.shadowOpacity * 0.35), 3)}`;
     }
 
     if (softShadowRef.current) {
@@ -167,6 +230,13 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
       s.opacity = `${round(state.contactOpacity, 3)}`;
       s.filter = `blur(${round(state.contactBlurPx, 1)}px)`;
     }
+
+    if (bounceRef.current) {
+      // Odbicie od podłoża gaśnie tak samo szybko jak cień kontaktowy —
+      // bo to ta sama sytuacja widziana z drugiej strony: światło odbite
+      // wraca w spód przedmiotu tylko wtedy, gdy ten jest blisko podłogi.
+      bounceRef.current.style.opacity = `${round(state.contactOpacity * BOUNCE_LIGHT.opacity, 3)}`;
+    }
   }, TICK_PRIORITY.RENDER);
 
   return (
@@ -175,9 +245,9 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
       /**
        * Skalowanie responsywne.
        *
-       * Bryła ma stałe wymiary w pikselach, a cień jest od niej o 42% szerszy —
-       * razem ponad 330 px. Na ekranie 375 px (najwęższy testowany) nie mieści
-       * się to w kadrze i nadruk był ucinany.
+       * Bryła ma stałe wymiary w pikselach, a najszersza warstwa cienia jest
+       * od niej ponad dwukrotnie szersza — razem grubo ponad 500 px. Na ekranie
+       * 375 px (najwęższy testowany) nie mieści się to w kadrze.
        *
        * Skalujemy CAŁĄ scenę jednym transformem zamiast przeliczać każdy wymiar
        * osobno. Dzięki temu proporcje, perspektywa i cienie pozostają
@@ -187,16 +257,44 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
       className="relative flex scale-[0.76] items-center justify-center sm:scale-[0.85] md:scale-100"
       style={{ perspective: `${BOX.perspectivePx}px` }}
     >
-      {/* --- CIEŃ, DWIE WARSTWY ---
+      {/* --- CIEŃ, TRZY WARSTWY + ODBICIE ---
           Osobno od pudełka, bo NIE dziedziczą jego skalowania: zgniecenie
           pudełka nie może zgniatać cienia (cień leży na podłodze i nie ma
-          powodu się kurczyć razem z bryłą). */}
+          powodu się kurczyć razem z bryłą).
+
+          Trzy warstwy, bo realny cień to trzy różne zjawiska o trzech różnych
+          zasięgach: okluzja otoczenia (bardzo szeroka, płaska), cień rzucony
+          (średni, reaguje na wysokość) i kontaktowy (wąski, twardy, znika
+          natychmiast po oderwaniu). Jedna uśredniona plama zawsze wygląda
+          jak naklejona pod spodem — i tak wyglądała pierwsza wersja. */}
+      <div
+        ref={ambientShadowRef}
+        className="absolute left-1/2"
+        style={{
+          top: `${GROUND_Y + SHADOW_DROP_PX - BOX.depthPx * 0.46}px`,
+          width: `${BOX.widthPx * AMBIENT_SHADOW.widthRatio}px`,
+          height: `${BOX.depthPx * AMBIENT_SHADOW.heightRatio}px`,
+          marginLeft: `${(-BOX.widthPx * AMBIENT_SHADOW.widthRatio) / 2}px`,
+          borderRadius: '50%',
+          /**
+           * Ta warstwa NIE dostaje `filter: blur`.
+           *
+           * Rozmycie tej wielkości to najdroższa rzecz, jaką można w tej
+           * scenie włączyć — zmierzone 13 fps zamiast 60 przy plamach tła.
+           * Gradient wielostopniowy daje tu identyczny efekt za zero, bo
+           * i tak jest to miękka elipsa bez żadnych detali do rozmycia.
+           */
+          background:
+            'radial-gradient(ellipse closest-side, rgba(38,46,84,0.34) 0%, rgba(38,46,84,0.19) 38%, rgba(38,46,84,0.07) 68%, rgba(38,46,84,0) 100%)',
+          opacity: AMBIENT_SHADOW.opacity,
+        }}
+      />
       <div
         ref={softShadowRef}
         className="absolute left-1/2 will-change-transform"
         style={{
-          top: `${GROUND_Y - BOX.depthPx * 0.26}px`,
-          width: `${BOX.widthPx * 1.42}px`,
+          top: `${GROUND_Y + SHADOW_DROP_PX - BOX.depthPx * 0.26}px`,
+          width: `${BOX.widthPx * 1.55}px`,
           height: `${BOX.depthPx * 0.52}px`,
           borderRadius: '50%',
           /**
@@ -208,7 +306,7 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
            * jako ciężka i doklejona.
            */
           background:
-            'radial-gradient(ellipse closest-side, rgba(46,54,92,0.45) 0%, rgba(46,54,92,0.24) 45%, rgba(46,54,92,0) 100%)',
+            'radial-gradient(ellipse closest-side, rgba(44,52,92,0.6) 0%, rgba(44,52,92,0.55) 32%, rgba(44,52,92,0.28) 62%, rgba(44,52,92,0) 100%)',
           transform: 'translate3d(-50%, 0, 0)',
         }}
       />
@@ -216,16 +314,31 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
         ref={contactShadowRef}
         className="absolute left-1/2 will-change-transform"
         style={{
-          top: `${GROUND_Y - BOX.depthPx * 0.15}px`,
+          top: `${GROUND_Y + SHADOW_DROP_PX * 0.55 - BOX.depthPx * 0.15}px`,
           width: `${BOX.widthPx * CONTACT_SHADOW.widthRatio}px`,
-          height: `${BOX.depthPx * 0.3}px`,
+          height: `${BOX.depthPx * 0.44}px`,
           borderRadius: '50%',
           // Cień kontaktowy jest ciemniejszy i cieplejszy od miękkiego —
           // to szczelina bez dostępu światła, więc dominuje w niej lokalna
           // barwa przedmiotu, nie oświetlenia.
           background:
-            'radial-gradient(ellipse closest-side, rgba(58,44,32,0.62) 0%, rgba(58,44,32,0.38) 55%, rgba(58,44,32,0) 100%)',
+            'radial-gradient(ellipse closest-side, rgba(52,38,26,0.76) 0%, rgba(52,38,26,0.66) 38%, rgba(52,38,26,0.3) 70%, rgba(52,38,26,0) 100%)',
           transform: 'translate3d(-50%, 0, 0)',
+        }}
+      />
+      {/* Światło odbite od podłogi w spód pudełka. Leży NA cieniu, bo to
+          jest rozjaśnienie samego cienia, nie osobna plama na podłodze. */}
+      <div
+        ref={bounceRef}
+        className="absolute left-1/2"
+        style={{
+          top: `${GROUND_Y + SHADOW_DROP_PX * 0.55 - BOX.depthPx * 0.17}px`,
+          width: `${BOX.widthPx * BOUNCE_LIGHT.widthRatio}px`,
+          height: `${BOX.depthPx * BOUNCE_LIGHT.heightRatio}px`,
+          marginLeft: `${(-BOX.widthPx * BOUNCE_LIGHT.widthRatio) / 2}px`,
+          borderRadius: '50%',
+          background: `radial-gradient(ellipse closest-side, ${BOUNCE_LIGHT.color} 0%, rgba(255,214,158,0) 100%)`,
+          opacity: BOUNCE_LIGHT.opacity,
         }}
       />
 
@@ -247,19 +360,32 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
             width: `${BOX.widthPx}px`,
             height: `${BOX.heightPx}px`,
             transform: `translate(-50%, -50%) translateZ(${HALF_D}px)`,
+            /**
+             * Nadruk NIE MOŻE wyjść poza ścianę — farba nie wisi w powietrzu.
+             * Bez tego przycięcia napis rozjeżdża się poza karton przy każdym
+             * kroju szerszym od docelowego, a Cabinet Grotesk bywa niedostępny
+             * (blokada hosta w podglądzie) i wtedy wchodzi krój zastępczy.
+             */
+            overflow: 'hidden',
             ...cardboardSurface({
               /**
-               * Gradient opisuje KIERUNEK ŚWIATŁA, a nie „ładny przejście".
-               * Źródło jest u góry po lewej, więc jasność spada po przekątnej
-               * w prawo w dół. Ten sam kierunek obowiązuje na każdej ściance —
-               * niespójne kierunki natychmiast rozbijają bryłę.
+               * DWIE warstwy: miękka plama światła u góry po lewej, a pod nią
+               * gradient opisujący ogólny kierunek oświetlenia.
+               *
+               * Sam gradient liniowy mówi tylko "jaśniej stąd, ciemniej tam" —
+               * czyli opisuje światło z nieskończoności. Plama dokłada
+               * informację, że źródło jest BLISKO, i to ona odpowiada za
+               * większość wrażenia bryły na płaskiej ścianie.
                */
-              gradient: `linear-gradient(152deg, ${CARDBOARD.light} 0%, ${CARDBOARD.base} 54%, ${CARDBOARD.dark} 100%)`,
+              gradient: [
+                keyLight(30, 14, 78, 0.2),
+                `linear-gradient(152deg, ${CARDBOARD.light} 0%, ${CARDBOARD.base} 54%, ${CARDBOARD.dark} 100%)`,
+              ].join(', '),
               occlusion: [
-                'inset 0 -30px 34px -20px rgba(96,66,38,0.42)',
-                'inset 0 16px 28px -18px rgba(96,66,38,0.22)',
-                'inset 20px 0 30px -24px rgba(96,66,38,0.26)',
-                'inset -20px 0 30px -24px rgba(96,66,38,0.26)',
+                'inset 0 -34px 40px -22px rgba(88,58,30,0.5)',
+                'inset 0 18px 30px -18px rgba(88,58,30,0.24)',
+                'inset 22px 0 34px -24px rgba(88,58,30,0.3)',
+                'inset -22px 0 34px -24px rgba(88,58,30,0.3)',
               ].join(', '),
               /**
                * FAZOWANIE + ŚWIATŁO KONTUROWE.
@@ -298,9 +424,7 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
           }}
         />
 
-        {/* Bok prawy — odwrócony od światła, więc wyraźnie ciemniejszy.
-            Zbyt zbliżona jasność ścian to najczęstszy powód, dla którego
-            bryła w CSS 3D wygląda jak płaski rysunek pudełka. */}
+        {/* Bok prawy — odwrócony od światła, więc wyraźnie ciemniejszy. */}
         <div
           style={{
             ...faceBase,
@@ -308,13 +432,13 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
             height: `${BOX.heightPx}px`,
             transform: `translate(-50%, -50%) rotateY(90deg) translateZ(${HALF_W}px)`,
             ...cardboardSurface({
-              // Ściana odwrócona od światła — wyraźnie ciemniejsza.
               // Zbyt zbliżone jasności ścian to najczęstszy powód, dla którego
-              // bryła w CSS 3D wygląda jak płaski rysunek pudełka.
-              gradient: `linear-gradient(168deg, ${CARDBOARD.base} 0%, ${CARDBOARD.dark} 72%, #8F6C48 100%)`,
+              // bryła w CSS 3D wygląda jak płaski rysunek pudełka. Ta ściana
+              // schodzi więc wyraźnie niżej niż `dark`.
+              gradient: `linear-gradient(168deg, ${CARDBOARD.base} 0%, ${CARDBOARD.dark} 68%, #83603A 100%)`,
               occlusion: [
-                'inset 0 -26px 30px -20px rgba(88,60,34,0.5)',
-                'inset 24px 0 32px -26px rgba(88,60,34,0.42)',
+                'inset 0 -30px 34px -20px rgba(78,52,26,0.58)',
+                'inset 26px 0 36px -26px rgba(78,52,26,0.48)',
               ].join(', '),
               edgeLight: [
                 `inset 0 1.5px 0 ${CARDBOARD.bevelLight}`,
@@ -325,7 +449,7 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
           }}
         />
 
-        {/* Bok lewy */}
+        {/* Bok lewy — zwrócony do światła. */}
         <div
           style={{
             ...faceBase,
@@ -333,10 +457,13 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
             height: `${BOX.heightPx}px`,
             transform: `translate(-50%, -50%) rotateY(-90deg) translateZ(${HALF_W}px)`,
             ...cardboardSurface({
-              gradient: `linear-gradient(192deg, ${CARDBOARD.light} 0%, ${CARDBOARD.base} 60%, ${CARDBOARD.dark} 100%)`,
+              gradient: [
+                keyLight(38, 16, 80, 0.26),
+                `linear-gradient(192deg, ${CARDBOARD.light} 0%, ${CARDBOARD.base} 60%, ${CARDBOARD.dark} 100%)`,
+              ].join(', '),
               occlusion: [
-                'inset 0 -26px 30px -20px rgba(88,60,34,0.44)',
-                'inset -24px 0 32px -26px rgba(88,60,34,0.34)',
+                'inset 0 -28px 32px -20px rgba(78,52,26,0.48)',
+                'inset -26px 0 36px -26px rgba(78,52,26,0.38)',
               ].join(', '),
               edgeLight: [
                 `inset 0 1.5px 0 ${CARDBOARD.bevelLight}`,
@@ -358,35 +485,28 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
           }}
         />
 
-        {/* Zakładki taśmy zawinięte na ściany przednią i tylną.
-            To ONE sprzedają, że folia jest naklejona na przedmiot, a nie
-            narysowana na jego widoku z góry: prawdziwa taśma zawsze
-            przechodzi przez krawędź i schodzi kawałek po ścianie. */}
-        {[1, -1].map((side) => (
+        {/* --- FAZKI PIONOWYCH KRAWĘDZI ---
+            Cztery wąskie ścięcia pod 45°, po jednym na każdą pionową krawędź.
+            Robią dwie rzeczy naraz: wypełniają szczelinę, którą zostawia
+            zaokrąglenie narożników ścian, i prowadzą wzdłuż kantu wąski
+            refleks. To ten refleks — nie łuk — mówi oku "ta krawędź jest
+            zaokrąglona". */}
+        {EDGE_FILLETS.map((fillet) => (
           <div
-            key={`tape-fold-${side}`}
-            ref={(node) => {
-              tapeFoldRefs.current[side === 1 ? 0 : 1] = node;
-            }}
+            key={fillet.key}
             style={{
-              position: 'absolute',
-              left: '50%',
-              top: '50%',
-              width: `${BOX.widthPx * 0.34}px`,
-              height: `${TAPE_FOLD_PX}px`,
-              transformOrigin: '50% 0',
+              ...faceBase,
+              width: `${BOX.edgeFilletPx}px`,
+              height: `${BOX.heightPx}px`,
               transform: [
-                `translate(-50%, 0)`,
-                side === 1 ? '' : 'rotateY(180deg)',
-                `translateY(${-HALF_H}px)`,
-                `translateZ(${HALF_D + 0.3}px)`,
-              ]
-                .filter(Boolean)
-                .join(' '),
-              ...TAPE,
-              // Zagięcie jest ciemniejsze: przechodzi przez krawędź, więc
-              // łapie mniej światła niż płaska część na górze.
-              filter: 'brightness(0.86)',
+                'translate(-50%, -50%)',
+                `translate3d(${round(fillet.sx * (HALF_W - FILLET_INSET), 2)}px, 0, ${round(fillet.sz * (HALF_D - FILLET_INSET), 2)}px)`,
+                `rotateY(${fillet.rotY}deg)`,
+              ].join(' '),
+              // Zaokrąglenie tylko na końcach paska, i to niewielkie —
+              // fazka ma zlewać się ze ścianami, a nie być osobną listwą.
+              borderRadius: '3px',
+              ...edgeFillet(fillet.spec),
             }}
           />
         ))}
@@ -483,49 +603,45 @@ export const CssBox = ({ scrollRef }: CssBoxProps): React.ReactElement => {
           sink={1.5}
         />
 
-        {/* Taśma pakowa wzdłuż szwu — DWIE połówki, żeby mogła pęknąć.
-            Leży nad klapami, więc musi być za nimi w kolejności rysowania. */}
-        {[0, 1].map((half) => (
+        {/* --- ŚWIATŁO W SZWIE ---
+            Dwie wąskie smugi na krzyż, dokładnie tam, gdzie stykają się cztery
+            klapy. Leżą TUŻ NAD nimi (translateZ o 2 px więcej), bo mają być
+            widoczne przy pudełku jeszcze zamkniętym — to jest zapowiedź
+            wystrzału, więc musi wyprzedzać ruch.
+
+            Smuga jest jasna w środku i schodzi do zera na obu końcach: światło
+            uchodzi szczeliną, a szczelina jest najszersza pośrodku. Pasek
+            o stałej jasności czytałby się jak świecąca listwa. */}
+        {[
+          { key: 'seam-w', w: BOX.widthPx * 0.92, h: 5, rot: 0 },
+          { key: 'seam-d', w: BOX.depthPx * 0.92, h: 5, rot: 90 },
+        ].map((seam, i) => (
           <div
-            key={half}
+            key={seam.key}
+            ref={(node) => {
+              seamRefs.current[i] = node;
+            }}
+            className="will-change-[opacity]"
             style={{
               position: 'absolute',
               left: '50%',
               top: '50%',
-              width: `${BOX.widthPx * 0.34}px`,
-              /**
-               * Taśma kończy się DOKŁADNIE na krawędzi bryły.
-               *
-               * Wcześniej wystawała po 8 px z każdej strony i te nadwyżki
-               * wisiały płasko w powietrzu — to był ten „odstający element UI",
-               * a nie folia naklejona na przedmiot. Zawinięcie na ściany
-               * realizują osobne zakładki niżej.
-               */
-              height: `${BOX.depthPx / 2}px`,
-              /**
-               * rotateX(90) kładzie płaszczyznę na GÓRZE bryły. Odstęp
-               * zredukowany do 0,3 px: folia ma PRZYLEGAĆ, a nie unosić się.
-               * Zero dałoby migotanie z płaszczyzną klap (z-fighting).
-               */
-              transform: `translate(-50%, ${half === 0 ? '-100%' : '0'}) rotateX(90deg) translateZ(${HALF_H + 0.3}px)`,
-              transformStyle: 'preserve-3d',
+              width: `${seam.w}px`,
+              height: `${seam.h}px`,
+              marginLeft: `${-seam.w / 2}px`,
+              marginTop: `${-seam.h / 2}px`,
+              transform: `rotateX(90deg) translateZ(${HALF_H + 2}px) rotateZ(${seam.rot}deg)`,
+              background:
+                'linear-gradient(90deg, rgba(255,214,150,0) 0%, rgba(255,236,198,0.95) 26%, rgba(255,252,240,1) 50%, rgba(255,236,198,0.95) 74%, rgba(255,214,150,0) 100%)',
+              // Rozmycie WPIECZONE w gradient pionowy, nie `filter: blur` —
+              // filtr na elemencie w `preserve-3d` przelicza się co klatkę.
+              maskImage:
+                'linear-gradient(180deg, rgba(0,0,0,0) 0%, #000 45%, #000 55%, rgba(0,0,0,0) 100%)',
+              WebkitMaskImage:
+                'linear-gradient(180deg, rgba(0,0,0,0) 0%, #000 45%, #000 55%, rgba(0,0,0,0) 100%)',
+              opacity: 0,
             }}
-          >
-            {/* Postrzępiona krawędź na linii pęknięcia. Taśma nie tnie się
-                równo — rozrywa się wzdłuż włókien folii, zostawiając ząbki.
-                Prosta krawędź czytałaby się jak cięcie nożem, czyli jako
-                czynność celowa, a nie jak coś, co puściło pod naporem.
-
-                Kształt siedzi w obrazku tła, nie w `clip-path` — powód
-                w komentarzu przy tapeHalf() w cardboard.ts. */}
-            <div
-              ref={(node) => {
-                tapeRefs.current[half] = node;
-              }}
-              className="h-full w-full will-change-transform"
-              style={half === 0 ? TAPE_TOP_HALF : TAPE_BOTTOM_HALF}
-            />
-          </div>
+          />
         ))}
       </div>
     </div>
@@ -591,13 +707,19 @@ interface FlapProps {
 /**
  * Klapa na własnym zawiasie.
  *
- * Konstrukcja dwuwarstwowa i to jest istotne: zewnętrzny div to bezwymiarowy
- * PUNKT umieszczony dokładnie na krawędzi zawiasu, a panel klapy zwisa z niego
- * z transform-origin na górnej krawędzi. Dzięki temu obrót klapy jest czystym
- * `rotateX` wokół prawdziwej osi zawiasu — bez kombinowania z przesunięciami
- * kompensacyjnymi, które przy czterech klapach zamieniłyby się w koszmar.
+ * Konstrukcja TRÓJwarstwowa i każda warstwa ma osobny powód:
  *
- * W Etapie 3 wystarczy animować jedną liczbę na klapę.
+ * 1. Zewnętrzny div to bezwymiarowy PUNKT na krawędzi zawiasu. Dzięki niemu
+ *    obrót klapy jest czystym `rotateX` wokół prawdziwej osi — bez przesunięć
+ *    kompensacyjnych, które przy czterech klapach zamieniłyby się w koszmar.
+ * 2. Panel (animowany) trzyma kąt i nic poza tym.
+ * 3. DWIE powierzchnie wewnątrz panelu: wierzch i spód tektury.
+ *
+ * Trzecia warstwa jest nowa i wynika z geometrii, nie z estetyki. Klapa
+ * otwarta na −208° przewala się przez pion, więc widz ogląda jej SPÓD, a nie
+ * wierzch. Wcześniej klapa była jedną płaszczyzną i po otwarciu pokazywała
+ * własny wierzch w lustrzanym odbiciu — przy jednolitym gradiencie nikt tego
+ * nie zauważał, ale przy ukośnym połysku błysk uciekałby w złą stronę.
  */
 const Flap = ({
   index,
@@ -607,64 +729,112 @@ const Flap = ({
   width,
   depth,
   sink,
-}: FlapProps): React.ReactElement => (
-  <div
-    style={{
-      position: 'absolute',
-      left: '50%',
-      top: '50%',
-      width: 0,
-      height: 0,
-      transformStyle: 'preserve-3d',
-      transform: `rotateY(${baseRotateY}deg) translateY(${-HALF_H + sink}px) translateZ(${offset}px)`,
-    }}
-  >
+}: FlapProps): React.ReactElement => {
+  const panelHeight = depth - BOX.flapGapPx;
+
+  const faceCommon: CSSProperties = {
+    position: 'absolute',
+    inset: 0,
+    backfaceVisibility: 'hidden',
+    borderRadius: FLAP_RADIUS,
+  };
+
+  return (
     <div
-      ref={(node) => {
-        flapRefs.current[index] = node;
-      }}
-      className="will-change-transform"
       style={{
         position: 'absolute',
-        left: `${-width / 2}px`,
-        top: 0,
-        width: `${width}px`,
-        height: `${depth - BOX.flapGapPx}px`,
-        transformOrigin: '50% 0',
-        transform: `rotateX(${FLAPS.closedDeg}deg)`,
+        left: '50%',
+        top: '50%',
+        width: 0,
+        height: 0,
         transformStyle: 'preserve-3d',
-        ...cardboardSurface({
-          gradient: `linear-gradient(178deg, ${CARDBOARD.light} 0%, ${CARDBOARD.base} 60%, ${CARDBOARD.dark} 100%)`,
-          // Klapa jest przyciemniona bliżej zawiasu — tam wpada najmniej światła.
-          occlusion: 'inset 0 22px 28px -20px rgba(88,60,34,0.45)',
-          edgeLight: [
-            `inset 0 -1.5px 0 ${CARDBOARD.bevelLight}`,
-            `inset 0 1px 0 ${CARDBOARD.bevelDark}`,
-          ].join(', '),
-        }),
+        transform: `rotateY(${baseRotateY}deg) translateY(${-HALF_H + sink}px) translateZ(${offset}px)`,
       }}
     >
-      {/* Cięta krawędź — tu widać, że tektura ma grubość i jest falista.
-          Pojedynczy detal, który najmocniej sprzedaje materiał.
-
-          `rotateX(90deg)` odchyla pasek W DÓŁ od płaszczyzny klapy, czyli
-          w grubość materiału. Przeciwny znak wyprowadzał go do góry i przy
-          czterech klapach dawał efekt grzebienia sterczącego nad pudełkiem. */}
       <div
+        ref={(node) => {
+          flapRefs.current[index] = node;
+        }}
+        className="will-change-transform"
         style={{
           position: 'absolute',
-          left: 0,
-          bottom: 0,
-          width: '100%',
-          height: `${BOARD_THICKNESS_PX}px`,
-          transformOrigin: '50% 100%',
-          transform: 'rotateX(90deg)',
-          ...CORRUGATION,
+          left: `${-width / 2}px`,
+          top: 0,
+          width: `${width}px`,
+          height: `${panelHeight}px`,
+          transformOrigin: '50% 0',
+          transform: `rotateX(${FLAPS.closedDeg}deg)`,
+          transformStyle: 'preserve-3d',
         }}
-      />
+      >
+        {/* WIERZCH — widoczny przy pudełku zamkniętym. */}
+        <div
+          style={{
+            ...faceCommon,
+            ...cardboardSurface({
+              gradient: `linear-gradient(178deg, ${CARDBOARD.light} 0%, ${CARDBOARD.base} 60%, ${CARDBOARD.dark} 100%)`,
+              // Klapa jest przyciemniona bliżej zawiasu — tam wpada najmniej światła.
+              occlusion: 'inset 0 22px 28px -20px rgba(78,52,26,0.5)',
+              edgeLight: [
+                // Jasna nitka biegnie wzdłuż WOLNEJ krawędzi i podąża za jej
+                // łukiem, bo cień wewnętrzny respektuje `border-radius`.
+                // To ona rysuje sylwetkę klapy — bez niej łuk ginie na tle.
+                `inset 0 -2px 0 ${CARDBOARD.bevelLight}`,
+                `inset 0 1px 0 ${CARDBOARD.bevelDark}`,
+              ].join(', '),
+            }),
+          }}
+        >
+          <div style={{ ...faceCommon, ...FLAP_GLOSS }} />
+        </div>
+
+        {/* SPÓD — powierzchnia oglądana przez większość sceny, bo klapa
+            otwarta jest odwrócona. Ciemniejsza i bez plamy światła: patrzy
+            w dół i do środka, więc łapie głównie odbicia. */}
+        <div
+          style={{
+            ...faceCommon,
+            transform: 'rotateY(180deg)',
+            ...cardboardSurface({
+              // Kierunek odwrócony względem wierzchu: przy otwartej klapie
+              // ZAWIAS jest na dole (przy pudełku), a wolna krawędź w górze,
+              // więc to ona łapie światło.
+              gradient: `linear-gradient(180deg, ${CARDBOARD.innerDark} 0%, ${CARDBOARD.inner} 46%, ${CARDBOARD.innerLight} 100%)`,
+              occlusion: 'inset 0 26px 34px -18px rgba(62,40,18,0.72)',
+              edgeLight: `inset 0 -2px 0 rgba(255,240,214,0.55)`,
+            }),
+          }}
+        >
+          <div style={{ ...faceCommon, ...FLAP_GLOSS, opacity: FLAP_SHAPE.glossOpacity * 0.5 }} />
+        </div>
+
+        {/* Cięta krawędź — tu widać, że tektura ma grubość i jest falista.
+
+            Pasek jest WĘŻSZY od klapy i wyśrodkowany, bo sylwetka ma teraz
+            łuk: prosty pasek na pełną szerokość wystawałby poza zakrzywione
+            narożniki. Szerokość dobrana tak, żeby mieścił się w płaskim
+            środku łuku (patrz FLAP_SHAPE.cutEdgeWidthPct).
+
+            `rotateX(90deg)` odchyla pasek W DÓŁ od płaszczyzny klapy, czyli
+            w grubość materiału. Przeciwny znak wyprowadzał go do góry i przy
+            czterech klapach dawał efekt grzebienia sterczącego nad pudełkiem. */}
+        <div
+          style={{
+            position: 'absolute',
+            left: `${(100 - FLAP_SHAPE.cutEdgeWidthPct) / 2}%`,
+            bottom: 0,
+            width: `${FLAP_SHAPE.cutEdgeWidthPct}%`,
+            height: `${BOARD_THICKNESS_PX}px`,
+            transformOrigin: '50% 100%',
+            transform: 'rotateX(90deg)',
+            borderRadius: '1.5px',
+            ...CORRUGATION,
+          }}
+        />
+      </div>
     </div>
-  </div>
-);
+  );
+};
 
 /* ------------------------------------------------------------------------- */
 
@@ -685,28 +855,29 @@ const BoxPrint = (): React.ReactElement => (
       // kartonie nigdy nie jest ani równy, ani pełny — a idealny nadruk
       // natychmiast zdradza, że to grafika wektorowa, a nie przedmiot.
       transform: 'rotate(-0.4deg)',
-      opacity: 0.88,
+      opacity: 0.9,
     }}
   >
-    {/* Kolory farby dobrane pod JAŚNIEJSZY karton: ciepła sepia, nie czerń.
-        W trybie mnożenia czerń wyszłaby zupełnie płaska i zabiłaby fakturę
-        podłoża — a o zachowanie faktury w tym trybie właśnie chodzi. */}
+    {/* Farba przyciemniona względem poprzedniej wersji, bo karton pojaśniał.
+        W trybie mnożenia wynik zależy OD OBU warstw — rozjaśnienie podłoża
+        automatycznie rozjaśnia nadruk, więc żeby kontrast został ten sam,
+        farba musi zejść niżej. */}
     <span
-      className="font-display text-[26px] leading-none font-extrabold whitespace-nowrap"
+      className="font-display text-[23px] leading-none font-extrabold whitespace-nowrap"
       // Rozmiar dobrany tak, żeby napis mieścił się na ścianie także w krojach
       // szerszych od docelowego — nadruk wychodzący poza karton natychmiast
       // zdradza, że to warstwa tekstu, a nie farba na powierzchni.
-      style={{ color: '#7A5334', letterSpacing: '0.01em' }}
+      style={{ color: '#6B451F', letterSpacing: '0.01em' }}
     >
       OTWÓRZ MNIE
     </span>
     <span
       className="mt-2 font-mono text-[10px] tracking-[0.34em] uppercase"
-      style={{ color: '#8A6242' }}
+      style={{ color: '#7C5330' }}
     >
       przewijając
     </span>
-    <div className="mt-3 flex gap-1.5" style={{ color: '#8A6242' }}>
+    <div className="mt-3 flex gap-1.5" style={{ color: '#7C5330' }}>
       {[0, 1, 2].map((index) => (
         <svg key={index} width="11" height="7" viewBox="0 0 11 7" fill="none" aria-hidden="true">
           <path

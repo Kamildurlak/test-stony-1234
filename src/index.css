@@ -27,9 +27,9 @@
 
   /* Kraft — jaśniejszy i cieplejszy niż w wersji na ciemnym tle.
      Uzasadnienie w config/scene.ts → CARDBOARD. */
-  --color-kraft: #d8b892;
-  --color-kraft-light: #f0dcc2;
-  --color-kraft-dark: #a8825c;
+  --color-kraft: #d9b489;
+  --color-kraft-light: #eedcbb;
+  --color-kraft-dark: #a2794e;
   --color-kraft-interior: #3a2716;
 
   --font-display: 'Cabinet Grotesk', 'Inter Variable', system-ui, sans-serif;

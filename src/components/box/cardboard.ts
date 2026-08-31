@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { CARDBOARD } from '../../config/scene';
+import { CARDBOARD, FLAP_SHAPE } from '../../config/scene';
 
 /**
  * Materiał kartonu.
@@ -8,11 +8,12 @@ import { CARDBOARD } from '../../config/scene';
  * i będzie potrzebna również warstwie WebGL. Trzymanie jej przy komponencie
  * CSS oznaczałoby przepisywanie tych samych decyzji drugi raz.
  *
- * Zasada nadrzędna przy tworzeniu materiału: to, co odróżnia karton od
- * brązowego prostokąta, to NIEREGULARNOŚĆ. Idealnie gładki gradient czyta się
- * jako plastik albo winyl — i dokładnie tak wyglądała pierwsza wersja tego
- * pudełka. Karton potrzebuje trzech rzeczy naraz: włókna, przybrudzenia
- * i widocznej grubości na cięciu.
+ * Zasada nadrzędna, po zmianie kierunku na styl ILUSTRACYJNY: skoro klient
+ * wyklucza fakturę, a referencja jest rysunkiem, bryłę musi zbudować samo
+ * ŚWIATŁO. Zostają trzy narzędzia i tylko trzy: różnica jasności między
+ * ścianami, przyciemnienie przy krawędziach (okluzja) oraz wąskie refleksy
+ * na kantach. Każde z nich jest statyczne, więc nie kosztuje ani jednej
+ * klatki.
  */
 
 interface SurfaceOptions {
@@ -42,11 +43,35 @@ export const cardboardSurface = ({
    * musi wziąć się wyłącznie z gradientu opisującego kierunek światła,
    * z okluzji przy krawędziach i z fazowania.
    *
-   * To jest realizm z fotografii produktowej, nie z magazynu: powierzchnia
+   * To jest realizm z ilustracji produktowej, nie z magazynu: powierzchnia
    * ma być bez skazy, a bryłę mają budować światło i geometria.
    */
   boxShadow: [occlusion, edgeLight].filter(Boolean).join(', ') || undefined,
 });
+
+/**
+ * Miękkie światło kluczowe na ścianie.
+ *
+ * Sam gradient liniowy opisuje kierunek światła, ale nie opisuje ŹRÓDŁA:
+ * przejście jest równomierne na całej wysokości, więc ściana czyta się jako
+ * oświetlona z nieskończoności. Rysunek robi to inaczej — kładzie jaśniejszą
+ * plamę tam, gdzie pada światło, i to ona mówi oku, że lampa jest blisko.
+ *
+ * Zwracamy warstwę gradientu do doklejenia PRZED gradientem bazowym
+ * (w CSS pierwsza warstwa jest na wierzchu).
+ *
+ * @param x pozycja plamy w % szerokości ściany
+ * @param y pozycja w % wysokości
+ * @param size zasięg w % krótszego boku
+ * @param strength krycie w szczycie
+ */
+export const keyLight = (x: number, y: number, size: number, strength: number): string =>
+  `radial-gradient(ellipse ${size}% ${size * 1.15}% at ${x}% ${y}%, ` +
+  `rgba(255,250,236,${strength}) 0%, ` +
+  // Trzy przystanki, nie dwa: przejście z połowicznym krokiem w środku znosi
+  // pasmowanie Macha, które przy tak dużej plamie rysuje widoczny okrąg.
+  `rgba(255,250,236,${(strength * 0.42).toFixed(3)}) 42%, ` +
+  `rgba(255,250,236,0) 100%)`;
 
 /**
  * Cięta krawędź tektury falistej.
@@ -76,91 +101,70 @@ export const CORRUGATION: CSSProperties = {
 };
 
 /**
- * Taśma pakowa.
+ * Sylwetka klapy — łuk na wolnej krawędzi, zmiękczenie przy zawiasie.
  *
- * Ma dwie funkcje naraz. Wizualnie: przezroczysty, błyszczący pas kontrastuje
- * z matowym kartonem i natychmiast czyta się jako "zaklejone". Narracyjnie:
- * w Fazie 2 taśma pęka PRZED otwarciem klap — bez niej wystrzał nie ma
- * przyczyny, klapy po prostu odskakują same z siebie.
+ * Zawias jest zawsze u GÓRY panelu (transformOrigin: 50% 0), więc kolejność
+ * narożników w `border-radius` — lewy górny, prawy górny, prawy dolny, lewy
+ * dolny — oznacza tu: zawias, zawias, wolna krawędź, wolna krawędź.
+ *
+ * Zapis z ukośnikiem rozdziela promień poziomy od pionowego i jest tu
+ * konieczny: łuk ma być SZEROKI I PŁYTKI. Jeden promień dałby ćwiartkę koła,
+ * czyli wycięcie tak głębokie, że przy zamkniętym pudełku odsłoniłoby wnętrze.
  */
+export const FLAP_RADIUS =
+  `${FLAP_SHAPE.hingeRadiusPx}px ${FLAP_SHAPE.hingeRadiusPx}px ` +
+  `${FLAP_SHAPE.archRadiusXPct}% ${FLAP_SHAPE.archRadiusXPct}% / ` +
+  `${FLAP_SHAPE.hingeRadiusPx}px ${FLAP_SHAPE.hingeRadiusPx}px ` +
+  `${FLAP_SHAPE.archRadiusYPct}% ${FLAP_SHAPE.archRadiusYPct}%`;
+
 /**
- * Połówka taśmy, w całości jako obrazek SVG.
+ * Pasmo połysku przeciągnięte po klapie.
  *
- * Kształt postrzępionej krawędzi MUSI być wpieczony w obrazek, a nie wycięty
- * `clip-path`em — i to jest jedna z najdroższych lekcji w tym pliku.
+ * Referencja od klienta ma je na każdej klapie i to nie jest ozdobnik: na
+ * ilustracji, pozbawionej faktury i cieni własnych, ukośny błysk jest jedyną
+ * rzeczą, która mówi, że powierzchnia jest PŁASKA I GŁADKA. Bez niego klapa
+ * czyta się jak wycinanka z papieru.
  *
- * Pierwsza wersja używała `clip-path: polygon(...)`. Zmierzone: 30 fps zamiast
- * 60, czyli połowa budżetu klatki na jeden efekt trwający ułamek sekundy.
- * Powód: pudełko obraca się bez przerwy (mikroobrót w spoczynku), a przycinanie
- * elementu wewnątrz kontekstu `preserve-3d` zmusza przeglądarkę do ponownego
- * rasteryzowania go w KAŻDEJ klatce. Ten sam kształt w tle to jedno
- * rasteryzowanie przy pierwszym renderze i zero kosztu potem.
- *
- * Zasada ogólna, warta zapamiętania: w scenie 3D wszystko, co zmienia KSZTAŁT
- * elementu (clip-path, mask, border-radius na animowanym elemencie), jest
- * drogie. Tanie jest wyłącznie to, co zmienia jego POŁOŻENIE.
- *
- * @param torn 'bottom' dla górnej połówki, 'top' dla dolnej — postrzępiona
- *             jest zawsze ta krawędź, wzdłuż której taśma pęka.
+ * Kąt 118° zamiast 90°: błysk ma iść w poprzek klapy, ale nie równolegle do
+ * żadnej z jej krawędzi. Równoległy czytałby się jako pas nadruku.
  */
-const tapeHalf = (torn: 'top' | 'bottom'): string => {
-  const shape =
-    torn === 'bottom'
-      ? 'M0,0 H100 V93 L82,100 L61,92 L43,100 L24,91 L8,98 L0,94 Z'
-      : 'M0,6 L18,0 L39,8 L57,1 L76,9 L92,2 L100,7 V100 H0 Z';
-
-  const svg = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100' preserveAspectRatio='none'>
-<defs><linearGradient id='t' x1='0' y1='0' x2='1' y2='0.18'>
-<stop offset='0' stop-color='#E8DCC8' stop-opacity='.42'/>
-<stop offset='.11' stop-color='#FFFFFF' stop-opacity='.88'/>
-<stop offset='.22' stop-color='#F4EEE2' stop-opacity='.34'/>
-<stop offset='.58' stop-color='#E2D6C4' stop-opacity='.26'/>
-<stop offset='.83' stop-color='#FFFFFF' stop-opacity='.7'/>
-<stop offset='.93' stop-color='#EDE4D6' stop-opacity='.3'/>
-<stop offset='1' stop-color='#DCCFBB' stop-opacity='.4'/>
-</linearGradient></defs>
-<path d='${shape}' fill='url(%23t)'/>
-<path d='${shape}' fill='none' stroke='%23FFFFFF' stroke-opacity='.55' stroke-width='1'/>
-</svg>`;
-
-  return `url("data:image/svg+xml,${svg.replace(/\n/g, '').replace(/#/g, '%23').replace(/"/g, "'")}")`;
+export const FLAP_GLOSS: CSSProperties = {
+  backgroundImage:
+    `linear-gradient(118deg, ` +
+    `rgba(255,255,255,0) 0%, ` +
+    `rgba(255,255,255,0) 26%, ` +
+    `${CARDBOARD.sheen} 40%, ` +
+    // Szczyt jest WĄSKI (40–48%), a zejście długie. Symetryczny błysk wygląda
+    // jak namalowany pasek; realny refleks ma ostrą górę i długi ogon.
+    `${CARDBOARD.sheen} 48%, ` +
+    `rgba(255,255,255,0.07) 72%, ` +
+    `rgba(255,255,255,0) 100%)`,
+  opacity: FLAP_SHAPE.glossOpacity,
 };
 
-export const TAPE_TOP_HALF: CSSProperties = {
-  backgroundImage: tapeHalf('bottom'),
-  backgroundSize: '100% 100%',
-};
-
-export const TAPE_BOTTOM_HALF: CSSProperties = {
-  backgroundImage: tapeHalf('top'),
-  backgroundSize: '100% 100%',
-};
-
-export const TAPE: CSSProperties = {
-  /**
-   * Taśma na jasnym krafcie to problem kontrastu: półprzezroczysta biel
-   * na jasnobrązowym tle jest praktycznie niewidoczna — pierwsza wersja
-   * po prostu znikała.
-   *
-   * Rozwiązanie bierze się z obserwacji prawdziwej taśmy: nie jest ani biała,
-   * ani przezroczysta. Ma lekko bursztynowy odcień od kleju, matowieje
-   * w miejscach naprężenia i — co najważniejsze — daje WĄSKI, ostry refleks
-   * wzdłuż osi. To ten refleks, a nie sam kolor, mówi oku "to jest folia".
-   */
-  background: [
-    'linear-gradient(100deg,',
-    'rgba(214,182,138,0.55) 0%,',
-    'rgba(255,246,226,0.82) 14%,',
-    'rgba(236,214,178,0.40) 30%,',
-    'rgba(206,176,134,0.34) 62%,',
-    'rgba(255,248,232,0.62) 88%,',
-    'rgba(198,168,126,0.50) 100%)',
-  ].join(' '),
-  // Brzeg taśmy łapie światło inaczej niż środek, bo klej tworzy tam
-  // mikroskopijny wałek. Pod spodem cień — folia leży NA kartonie.
-  boxShadow: [
-    'inset 1px 0 0 rgba(255,255,255,0.75)',
-    'inset -1px 0 0 rgba(255,255,255,0.75)',
-    '0 2px 5px rgba(58,38,16,0.32)',
+/**
+ * Fazka pionowej krawędzi.
+ *
+ * Wąski pasek pod 45° wypełniający ścięcie między dwiema ścianami. Gradient
+ * ma refleks W ŚRODKU paska, a przy obu brzegach schodzi do barwy ścian —
+ * dzięki temu ścięcie nie zdradza się jako trzecia, osobna płaszczyzna,
+ * tylko czyta się jako miękko zaokrąglony kant.
+ *
+ * @param spec siła refleksu; zależy od tego, jak dana krawędź jest ustawiona
+ *             do światła (przód-lewo najmocniej, tył najsłabiej)
+ */
+export const edgeFillet = (spec: number): CSSProperties => ({
+  backgroundImage: [
+    // Refleks: WARSTWA WIERZCHNIA. `spec` steruje jego kryciem wprost
+    // w kolorze, nie właściwością `opacity` — ta przygasiłaby również
+    // barwę bazową pod spodem i przez ścięcie prześwitywałoby tło.
+    // Refleks jest WĄSKI — 30–62% szerokości paska, nie cała szerokość.
+    // Rozlany na całą fazkę zamienia ją w jasną listwę doklejoną do pudełka;
+    // realny refleks na zaokrąglonej krawędzi to cienka smuga, bo tylko
+    // wąski pas powierzchni ma normalną wycelowaną w źródło światła.
+    `linear-gradient(90deg, rgba(255,246,226,0) 30%, rgba(255,246,226,${spec.toFixed(2)}) 46%, rgba(255,246,226,0) 62%)`,
+    // Barwa bazowa: ta sama oś światła co na ścianach (góra jasna, dół ciemny),
+    // żeby fazka należała do bryły, a nie leżała na niej jak listwa.
+    `linear-gradient(172deg, ${CARDBOARD.light} 0%, ${CARDBOARD.base} 58%, ${CARDBOARD.dark} 100%)`,
   ].join(', '),
-};
+});

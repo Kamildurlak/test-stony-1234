@@ -234,15 +234,31 @@ export const FLAPS = {
 } as const;
 
 /**
- * Taśma. Pęka PRZED klapami — inaczej wystrzał nie ma przyczyny.
+ * Błysk szwu — następca taśmy.
+ *
+ * TAŚMA ZOSTAŁA USUNIĘTA NA PROŚBĘ KLIENTA. Warto wiedzieć, co przy okazji
+ * zniknęło, bo to nie był ozdobnik: taśma pękała PRZED klapami i dzięki temu
+ * wystrzał miał PRZYCZYNĘ. Bez niej klapy odskakują same z siebie, a widz
+ * czyta to jako błąd odtwarzania, nie jako zdarzenie.
+ *
+ * Przyczynę niesie teraz światło. Wzdłuż szwu — tam, gdzie stykają się cztery
+ * klapy — narasta wąska, ciepła linia, jakby w środku rosło ciśnienie.
+ * Gaśnie w chwili, gdy pierwsza klapa rusza. Ten sam sygnał narracyjny,
+ * tylko delikatniejszy, i bez przedmiotu, którego klient nie chce widzieć.
+ *
+ * Koszt: sama `opacity` na dwóch statycznych paskach. Zero pracy na klatkę.
  */
-export const TAPE_BREAK = {
-  /** Ułamek fazy OPEN, w którym taśma pęka. Musi zdążyć przed pierwszą klapą. */
-  range: [0.0, 0.16] as const,
-  /** Rozejście połówek w px. */
-  partPx: 26,
-  /** Obrót każdej połówki przy zerwaniu — taśma się zwija, nie odsuwa równo. */
-  curlDeg: 14,
+export const SEAM_LIGHT = {
+  /**
+   * Wykładnik narastania w fazie ANTICIPATION. Wysoki, bo światło ma pojawić
+   * się DOPIERO tuż przed wystrzałem — przy narastaniu liniowym szew świeciłby
+   * przez cały początek scrolla i przestałby cokolwiek zapowiadać.
+   */
+  buildExponent: 3.4,
+  /** Ułamek fazy OPEN, w którym błysk gaśnie. Krótki: to rozbłysk, nie lampka. */
+  fadeRatio: 0.3,
+  /** Szczytowe krycie. */
+  peakOpacity: 0.9,
 } as const;
 
 /**
@@ -369,12 +385,69 @@ export const BOX = {
   /**
    * Zaokrąglenie narożników kartonu.
    *
-   * CELOWO minimalne. Karton ma zagniecione, lekko zmiękczone krawędzie,
-   * ale nie jest zaokrąglonym pudełkiem — przy większym promieniu ściany
-   * przestają się schodzić i między nimi pojawiają się prześwity, bo
-   * to są płaskie prostokąty w przestrzeni 3D, a nie prawdziwa bryła.
+   * Podniesione z 5 na 9 px. Wcześniej promień był zakładnikiem konstrukcji:
+   * ściany to płaskie prostokąty w przestrzeni 3D, więc każde zaokrąglenie
+   * rozsuwało je w pionowych krawędziach i zostawiało prześwity na tło.
+   *
+   * Ograniczenie zniknęło razem z FAZKAMI (niżej): pionowe krawędzie są teraz
+   * fizycznie ścięte osobną płaszczyzną, która wypełnia tę szczelinę i przy
+   * okazji łapie światło. Promień może więc urosnąć do wartości, przy której
+   * bryła czyta się jako miękka i rysunkowa, a nie wycięta żyletką.
    */
-  cornerRadiusPx: 5,
+  cornerRadiusPx: 9,
+
+  /**
+   * Szerokość ścięcia (fazki) na czterech pionowych krawędziach.
+   *
+   * To jest najstarszy trik z modelowania low-poly i jedyny, który działa
+   * w CSS 3D: zaokrąglonej krawędzi nie da się zrobić bez geometrii, ale
+   * WĄSKIE ŚCIĘCIE POD 45° daje dokładnie ten sam odczyt. Powód jest
+   * optyczny, nie geometryczny — oko rozpoznaje zaokrągloną krawędź po
+   * WĄSKIM REFLEKSIE biegnącym wzdłuż niej, a nie po samym łuku.
+   * Fazka ten refleks ma; ostra krawędź nie ma go z definicji.
+   *
+   * Szerokość musi odpowiadać promieniowi narożnika (łuk ćwiartki o promieniu
+   * 9 px ma ok. 14 px długości), inaczej ścięcie i zaokrąglone rogi ścian
+   * rozjeżdżają się i widać, że to dwa niezależne oszustwa.
+   */
+  edgeFilletPx: 12,
+} as const;
+
+/**
+ * Sylwetka klapy.
+ *
+ * ZMIANA KIERUNKU na prośbę klienta (referencja: ilustracja otwartego kartonu).
+ * Klapy przestają być prostokątami — wolna krawędź dostaje łuk, a narożniki
+ * przy zawiasie zmiękczenie. To jest ta różnica, przez którą pudełko czyta się
+ * jako rysowane, a nie jako cztery prostokąty na zawiasach.
+ *
+ * Łuk MUSI zostać płytki i to nie jest kwestia gustu. Klapy w stanie zamkniętym
+ * leżą parami: przednia z tylną zakrywają całą górę, lewa z prawą też. Wycięcie
+ * przy wolnej krawędzi jednej pary wypada dokładnie tam, gdzie druga para leży
+ * pełnym materiałem — więc płytki łuk jest niewidoczny przy zamkniętym pudełku.
+ * Głęboki zacząłby odsłaniać wnętrze w narożnikach, bo tam obie pary mają już
+ * swoje wycięcia.
+ */
+export const FLAP_SHAPE = {
+  /** Promień narożników przy zawiasie. Samo zmiękczenie, bez zmiany sylwetki. */
+  hingeRadiusPx: 7,
+  /** Poziomy promień łuku wolnej krawędzi, w % szerokości klapy. */
+  archRadiusXPct: 26,
+  /** Pionowy promień łuku, w % głębokości klapy. Trzyma łuk płytkim. */
+  archRadiusYPct: 24,
+  /**
+   * Szerokość paska grubości tektury, w % szerokości klapy.
+   * Musi zmieścić się w PŁASKIM środku łuku (100 − 2 × archRadiusXPct = 48%),
+   * inaczej prosty pasek wystaje poza zakrzywioną sylwetkę.
+   *
+   * Łuk został w tym celu spłycony (32% → 26%). Powód jest praktyczny:
+   * klapa to płaszczyzna o zerowej grubości, więc oglądana z boku znika do
+   * kreski. Jedyne, co ją wtedy ratuje, to właśnie ten pasek — im dłuższy,
+   * tym bardziej klapa czyta się w tym ujęciu jako deska, a nie jako drzazga.
+   */
+  cutEdgeWidthPct: 46,
+  /** Krycie pasma połysku przeciągniętego po klapie. */
+  glossOpacity: 0.5,
 } as const;
 
 /**
@@ -386,17 +459,60 @@ export const BOX = {
  * które sprzedają masę.
  */
 export const SHADOW = {
-  /** Skala cienia przy podłożu i na szczycie skoku. */
+  /**
+   * Skala cienia przy podłożu i na szczycie.
+   *
+   * Rozpiętość ŚWIADOMIE zawężona (0.62 → 0.86). Te liczby pochodziły z czasów
+   * podskoku, gdy pudełko wznosiło się o pół własnej wysokości — wtedy skurcz
+   * cienia o 38% był uzasadniony. Unoszenie ma amplitudę 3.5% wysokości, czyli
+   * około 6 px: cień kurczący się przy takim ruchu o ponad jedną trzecią czyta
+   * się jako pulsowanie, bo widz nie widzi zmiany wysokości, która by je
+   * tłumaczyła. Ten sam powód stoi za zawężeniem krycia i rozmycia.
+   */
   scaleGround: 1.0,
-  scaleApex: 0.62,
+  scaleApex: 0.86,
 
   /** Krycie cienia przy podłożu i na szczycie. */
-  opacityGround: 0.8,
-  opacityApex: 0.42,
+  opacityGround: 0.92,
+  opacityApex: 0.8,
 
   /** Rozmycie w px przy podłożu i na szczycie. */
   blurGroundPx: 18,
-  blurApexPx: 44,
+  blurApexPx: 28,
+} as const;
+
+/**
+ * Trzecia, najszersza warstwa cienia — okluzja otoczenia.
+ *
+ * Dwie warstwy (miękka + kontaktowa) opisują cień od JEDNEGO źródła. Realna
+ * scena ma jeszcze światło ze wszystkich stron naraz, a przedmiot je zasłania:
+ * podłoga wokół niego jest odrobinę ciemniejsza w promieniu znacznie większym
+ * niż sam cień rzucony.
+ *
+ * Bez tej warstwy pudełko ma cień, ale nie ma CIĘŻARU — plama kończy się zbyt
+ * blisko bryły i kadr wokół niej jest podejrzanie czysty. To jest tania
+ * warstwa: statyczny gradient, ani jednej właściwości animowanej.
+ */
+export const AMBIENT_SHADOW = {
+  /** Szerokość względem pudełka. Bardzo duża — to nie cień, to ubytek światła. */
+  widthRatio: 2.35,
+  heightRatio: 0.92,
+  opacity: 0.3,
+} as const;
+
+/**
+ * Światło odbite od podłoża.
+ *
+ * Podłoga pod pudełkiem odbija światło z powrotem w jego spód. Ciepła,
+ * bardzo słaba plama TUŻ pod bryłą — mniejsza niż cień i o wyższym kryciu
+ * w środku. Wygląda na drobiazg, ale to ona odkleja przedmiot od cienia:
+ * bez niej cień i pudełko schodzą się jedną twardą linią.
+ */
+export const BOUNCE_LIGHT = {
+  widthRatio: 1.15,
+  heightRatio: 0.34,
+  opacity: 0.34,
+  color: 'rgba(255,214,158,0.75)',
 } as const;
 
 /**
@@ -415,15 +531,29 @@ export const SHADOW = {
  */
 export const CONTACT_SHADOW = {
   /** Szerokość względem cienia miękkiego — wyraźnie węższy. */
-  widthRatio: 1.02,
-  opacityGround: 0.85,
+  widthRatio: 1.16,
+  opacityGround: 0.95,
+  /**
+   * Dolna granica krycia. Unoszące się pudełko nigdy nie odrywa się na tyle,
+   * żeby szczelina pod nim wpuściła światło — więc twarda obwódka słabnie,
+   * ale nie znika. Zero należy wyłącznie do fazy upadku.
+   */
+  floor: 0.72,
   blurGroundPx: 5,
   blurApexPx: 16,
   /**
    * Wykładnik zaniku. Powyżej 1 krycie spada gwałtownie już przy pierwszych
    * milimetrach oderwania — dokładnie tak, jak zachowuje się realny kontakt.
+   *
+   * Zbity z 2.6 do 1.6 razem z podniesieniem podłogi. Zmierzone na żywo:
+   * przy poprzednich wartościach krycie wahało się przez cykl unoszenia
+   * od 0.40 do 0.94, czyli ponad dwukrotnie — i to przy ruchu bryły o 6 px.
+   * Widz nie widzi zmiany wysokości, która by to tłumaczyła, więc odbiera to
+   * jako PULSOWANIE cienia, a w dolnej fazie cienia po prostu nie ma. Wysoki
+   * wykładnik dodatkowo trzymał krycie przy podłodze przez większość cyklu,
+   * bo krzywa potęgowa spędza czas głównie przy zerze.
    */
-  falloffExponent: 2.6,
+  falloffExponent: 1.6,
 } as const;
 
 /* ------------------------------------------------------------------------- */
@@ -560,11 +690,37 @@ export const CARDBOARD = {
    * odbitego od tła. To jest realizm opakowania z fotografii produktowej,
    * a nie paczki kurierskiej — inny, ale nie mniejszy.
    */
-  base: '#D8B892',
-  light: '#F0DCC2',
-  dark: '#A8825C',
+  /**
+   * Odcienie ocieplone i ROZSUNIĘTE względem poprzedniej wersji.
+   *
+   * Rozpiętość jasności między `light` a `dark` urosła z 24% do 34%. To nie
+   * jest podkręcanie kontrastu dla efektu — na tym stoi cały odczyt bryły.
+   * Ilustracja (referencja od klienta) opisuje formę WYŁĄCZNIE różnicą
+   * jasności ścian, bo nie ma do dyspozycji ani faktury, ani cieni własnych.
+   * Skoro klient wyklucza fakturę, zostaje dokładnie ta sama droga.
+   */
+  base: '#D9B489',
+  light: '#EEDCBB',
+  dark: '#A2794E',
   /** Wnętrze — nadal wyraźnie ciemne, żeby ikony miały Z CZEGO się wyłonić. */
   interior: '#3A2716',
+
+  /**
+   * Spód klapy, czyli WEWNĘTRZNA strona tektury.
+   *
+   * Potrzebna, bo klapa otwarta na −208° jest ODWRÓCONA: powierzchnia, która
+   * przy zamkniętym pudełku patrzyła w górę, po przewaleniu się przez pion
+   * patrzy w dół i do środka. Widz przez większość sceny ogląda więc SPÓD
+   * klapy, nie jej wierzch.
+   *
+   * Wcześniej ta strona nie istniała — klapa była jedną płaszczyzną, więc po
+   * otwarciu pokazywała własny wierzch w lustrzanym odbiciu. Działało, dopóki
+   * nie było na niej niczego kierunkowego; przy połysku i łuku zaczęłoby
+   * kłamać wprost.
+   */
+  innerLight: '#D2A972',
+  inner: '#BC9058',
+  innerDark: '#8B6537',
 
   /**
    * Fazowanie: jasna nitka na krawędzi zwróconej do światła i ciemna
@@ -572,8 +728,19 @@ export const CARDBOARD = {
    * schodzą się nieskończenie ostrą linią, czego w rzeczywistości nie ma
    * żaden przedmiot.
    */
-  bevelLight: 'rgba(255,248,236,0.85)',
+  bevelLight: 'rgba(255,247,233,0.6)',
   bevelDark: 'rgba(120,88,54,0.5)',
+
+  /**
+   * Połysk. Nie biel — bardzo jasny, lekko kremowy odcień.
+   *
+   * Czysta biel na krafcie zawsze wygląda jak dziura w materiale: refleks
+   * przejmuje barwę ŹRÓDŁA światła, a nie farby, ale przechodzi przez
+   * powierzchnię i coś z niej zabiera. Kremowy refleks czyta się jako światło
+   * NA kartonie; biały jako wycięty otwór.
+   */
+  sheen: 'rgba(255,250,238,0.45)',
+
 } as const;
 
 /**

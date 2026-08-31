@@ -35,6 +35,32 @@ i szumu. **Nie dodawać z powrotem tekstury.** Realizm niesie teraz fazowanie
 krawędzi (`CARDBOARD.bevelLight`/`bevelDark`) i kolorowe światło konturowe
 odbite od tła (`RIM_LIGHT`).
 
+**Taśma — USUNIĘTA na wyraźną prośbę klienta.** Warto wiedzieć, co przy okazji
+zniknęło, bo to nie był ozdobnik: taśma pękała PRZED klapami i dzięki temu
+wystrzał miał przyczynę. Zastąpił ją `SEAM_LIGHT` — wąska ciepła linia w szwie,
+narastająca w zamachu i gasnąca w chwili, gdy rusza pierwsza klapa.
+**Nie przywracać taśmy w żadnej formie.**
+
+**Styl ilustracyjny (referencja od klienta: rysunek otwartego kartonu).**
+Klapy nie są prostokątami — wolna krawędź ma płytki łuk (`FLAP_SHAPE`),
+a po powierzchni idzie ukośne pasmo połysku. Klapa ma DWIE powierzchnie:
+otwarta na −208° przewala się przez pion, więc widz ogląda jej SPÓD
+(`CARDBOARD.inner*`), a nie wierzch. Wcześniej była jedną płaszczyzną
+i pokazywała własny wierzch w lustrzanym odbiciu.
+
+**Zaokrąglenie narożników a fazki.** Promień ścian (`BOX.cornerRadiusPx`) mógł
+urosnąć z 5 na 9 px dopiero wtedy, gdy cztery pionowe krawędzie dostały
+ścięcia pod 45° (`BOX.edgeFilletPx`). Wcześniej każde zaokrąglenie rozsuwało
+płaskie prostokąty ścian i w narożnikach prześwitywało tło.
+
+**Pułapka przy fazkach — kosztowała pół iteracji.** `rotateY(45deg)
+translateZ(d)` ustawia element w odległości `d` wzdłuż normalnej, czyli
+w STOPIE PROSTOPADŁEJ ze środka bryły. To NIE jest środek ścięcia — te punkty
+pokrywają się wyłącznie wtedy, gdy rzut pudełka jest kwadratem. Przy 230 × 172
+rozjeżdżały się o 20 px, czyli więcej niż szerokość fazki, i paski lądowały na
+środku ścian jak doklejone listwy. Środek liczymy więc wprost, we
+współrzędnych bryły (`translate3d(mx, 0, mz) rotateY(θ)`).
+
 **Ruch pudełka — druga odwrócona decyzja.** Pierwotny brief żądał wyraźnego
 PODSKOKU z fizyką: parabola, squash and stretch, cień reagujący na wysokość.
 Klient poprosił potem o ruch „bardzo subtelny", bez agresywnych odbić.
@@ -80,6 +106,26 @@ albo `opacity`.
 **Nie ufaj bezwzględnym wartościom fps mierzonym w kontenerze** — zmieniają się
 między restartami maszyny. Miarodajne jest wyłącznie porównanie w obrębie
 jednego przebiegu.
+
+## Cienie: dlaczego bywa, że są, a nie widać
+
+Dwie osobne pułapki, obie zdiagnozowane POMIAREM, bo obie wyglądają identycznie
+(„cienia nie ma") i obie kuszą tym samym błędnym odruchem — podkręceniem krycia.
+
+1. **Elipsa wyśrodkowana na linii styku oddaje widzowi wyłącznie swoje boki**,
+   bo ciemny środek zasłania sam przedmiot. Zmierzone: najciemniejszy punkt
+   wypadał 11 px pod najniższym pikselem bryły. Lekarstwem jest zsunięcie plamy
+   w dół (`SHADOW_DROP_PX`), nie zwiększanie krycia.
+2. **Zamiana podskoku na unoszenie zostawiła nieaktualną fizykę.** `heightRatio`
+   liczyło się z `Math.abs(height)`, co było poprawne dla paraboli wychodzącej
+   z zera, ale nie dla sinusoidy wahającej się symetrycznie: wartość bezwzględna
+   dawała 1 zarówno na szczycie, jak i na DNIE ruchu, więc cień kontaktowy gasł
+   dokładnie wtedy, gdy ma być najmocniejszy (zmierzone krycie: 0.001).
+
+Stąd ogólniejsza reguła: **po odwróceniu decyzji o ruchu trzeba przejść wszystkie
+wartości, które od tego ruchu zależały.** Zakresy `SHADOW` i `CONTACT_SHADOW`
+pochodziły z czasów, gdy bryła wznosiła się o pół własnej wysokości; przy
+amplitudzie 6 px dawały pulsowanie cienia od 0.40 do 0.94 w jednym cyklu.
 
 ## Warstwy efektów
 
